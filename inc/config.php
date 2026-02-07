@@ -6,7 +6,7 @@ return [
     'host' => 'localhost',
     'name' => 'u341552863_tabletop',
     'user' => 'u341552863_neruer',
-    'pass' => 'ZxSaQw@13edc',
+    'pass' => '1trv|4NrX;',
     'charset' => 'utf8mb4',
   ],
   'app' => [
