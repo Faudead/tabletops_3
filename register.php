@@ -8,25 +8,27 @@ start_session();
 $err = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-  $email = trim((string)($_POST['email'] ?? ''));
-  $pass  = (string)($_POST['password'] ?? '');
+  $username = trim((string)($_POST['username'] ?? ''));
+  $pass     = (string)($_POST['password'] ?? '');
 
-  if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-    $err = 'Невірний email.';
+  if (!preg_match('/^[a-zA-Z0-9_]{3,32}$/', $username)) {
+    $err = 'Username: 3–32 символи, латиниця, цифри, _.';
   } elseif (mb_strlen($pass) < 8) {
     $err = 'Пароль має бути мінімум 8 символів.';
   } else {
     $pdo = db();
-    $stmt = $pdo->prepare("SELECT id FROM users WHERE email=? LIMIT 1");
-    $stmt->execute([$email]);
+    $stmt = $pdo->prepare("SELECT id FROM users WHERE username=? LIMIT 1");
+    $stmt->execute([$username]);
     if ($stmt->fetch()) {
-      $err = 'Такий email вже зареєстрований.';
+      $err = 'Такий username вже існує.';
     } else {
       $hash = password_hash($pass, PASSWORD_DEFAULT);
-      $stmt = $pdo->prepare("INSERT INTO users (email, password_hash, role) VALUES (?, ?, 'user')");
-      $stmt->execute([$email, $hash]);
+      $stmt = $pdo->prepare(
+        "INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'user')"
+      );
+      $stmt->execute([$username, $hash]);
       $id = (int)$pdo->lastInsertId();
-      login_user($id, $email, 'user');
+      login_user($id, $username, 'user');
       header('Location: /dashboard.php');
       exit;
     }
@@ -41,8 +43,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <?php if ($err): ?><p style="color:red"><?= htmlspecialchars($err) ?></p><?php endif; ?>
 
 <form method="post">
-  <label>Email<br><input name="email" type="email" required></label><br><br>
-  <label>Пароль (мін 8)<br><input name="password" type="password" required></label><br><br>
+  <label>Username<br><input name="username" required></label><br><br>
+  <label>Пароль<br><input name="password" type="password" required></label><br><br>
   <button type="submit">Створити акаунт</button>
 </form>
 

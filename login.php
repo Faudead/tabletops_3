@@ -8,18 +8,20 @@ start_session();
 $err = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-  $email = trim((string)($_POST['email'] ?? ''));
-  $pass  = (string)($_POST['password'] ?? '');
+  $username = trim((string)($_POST['username'] ?? ''));
+  $pass     = (string)($_POST['password'] ?? '');
 
   $pdo = db();
-  $stmt = $pdo->prepare("SELECT id, email, password_hash, role FROM users WHERE email=? LIMIT 1");
-  $stmt->execute([$email]);
+  $stmt = $pdo->prepare(
+    "SELECT id, username, password_hash, role FROM users WHERE username=? LIMIT 1"
+  );
+  $stmt->execute([$username]);
   $u = $stmt->fetch();
 
   if (!$u || !password_verify($pass, (string)$u['password_hash'])) {
-    $err = 'Невірний email або пароль.';
+    $err = 'Невірний username або пароль.';
   } else {
-    login_user((int)$u['id'], (string)$u['email'], (string)$u['role']);
+    login_user((int)$u['id'], (string)$u['username'], (string)$u['role']);
     header('Location: /dashboard.php');
     exit;
   }
@@ -33,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <?php if ($err): ?><p style="color:red"><?= htmlspecialchars($err) ?></p><?php endif; ?>
 
 <form method="post">
-  <label>Email<br><input name="email" type="email" required></label><br><br>
+  <label>Username<br><input name="username" required></label><br><br>
   <label>Пароль<br><input name="password" type="password" required></label><br><br>
   <button type="submit">Увійти</button>
 </form>
