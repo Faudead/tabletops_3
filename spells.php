@@ -10,8 +10,8 @@ $q = trim((string)($_GET['q'] ?? ''));
 $level = trim((string)($_GET['level'] ?? ''));
 $school = trim((string)($_GET['school'] ?? ''));
 
-// ✅ фільтр "тільки змінені"
-$changedOnly = isset($_GET['changed']) && (string)$_GET['changed'] === '1';
+// 🆕 тільки змінені
+$changedOnly = isset($_GET['changed']) && $_GET['changed'] === '1';
 
 $sql = "SELECT
           slug,
@@ -39,14 +39,19 @@ if ($changedOnly) {
   $sql .= " AND TRIM(override_text) <> ''";
 }
 
-// ✅ за замовчуванням — алфавіт (укр сортування)
+// ✅ алфавітний порядок (українська)
 $sql .= " ORDER BY name COLLATE utf8mb4_unicode_ci";
 
 $stmt = db()->prepare($sql);
 $stmt->execute($params);
 $rows = $stmt->fetchAll();
 
-$schools = db()->query("SELECT DISTINCT school FROM spells WHERE is_published=1 AND school <> '' ORDER BY school COLLATE utf8mb4_unicode_ci")->fetchAll();
+$schools = db()->query("
+  SELECT DISTINCT school
+  FROM spells
+  WHERE is_published=1 AND school <> ''
+  ORDER BY school COLLATE utf8mb4_unicode_ci
+")->fetchAll();
 ?>
 <!doctype html>
 <html lang="uk">
@@ -64,6 +69,7 @@ $schools = db()->query("SELECT DISTINCT school FROM spells WHERE is_published=1 
   </style>
 </head>
 <body>
+
 <h1>Заклинання</h1>
 
 <form method="get" class="row">
@@ -85,6 +91,7 @@ $schools = db()->query("SELECT DISTINCT school FROM spells WHERE is_published=1 
     <?php endforeach; ?>
   </select>
 
+  <!-- 🆕 фільтр змінених -->
   <label class="chk">
     <input type="checkbox" name="changed" value="1" <?= $changedOnly ? 'checked' : '' ?>>
     тільки змінені
@@ -108,11 +115,14 @@ $schools = db()->query("SELECT DISTINCT school FROM spells WHERE is_published=1 
       <span class="badge warn">changed</span>
     <?php endif; ?>
 
-    <span class="muted">— lvl <?= (int)$r['level'] ?>, <?= htmlspecialchars((string)$r['school']) ?></span>
+    <span class="muted">
+      — lvl <?= (int)$r['level'] ?>, <?= htmlspecialchars((string)$r['school']) ?>
+    </span>
   </li>
 <?php endforeach; ?>
 </ul>
 
 <p><a href="/dashboard.php">← в кабінет</a></p>
+
 </body>
 </html>
