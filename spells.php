@@ -10,7 +10,15 @@ $q = trim((string)($_GET['q'] ?? ''));
 $level = trim((string)($_GET['level'] ?? ''));
 $school = trim((string)($_GET['school'] ?? ''));
 
-$sql = "SELECT slug, name, level, school
+// ✅ фільтр "тільки змінені"
+$changedOnly = isset($_GET['changed']) && (string)$_GET['changed'] === '1';
+
+$sql = "SELECT
+          slug,
+          name,
+          level,
+          school,
+          (override_text IS NOT NULL AND TRIM(override_text) <> '') AS has_override
         FROM spells
         WHERE is_published=1";
 $params = [];
@@ -27,14 +35,18 @@ if ($school !== '') {
   $sql .= " AND school = ?";
   $params[] = $school;
 }
+if ($changedOnly) {
+  $sql .= " AND TRIM(override_text) <> ''";
+}
 
-$sql .= " ORDER BY level, name";
+// ✅ за замовчуванням — алфавіт (укр сортування)
+$sql .= " ORDER BY name COLLATE utf8mb4_unicode_ci";
 
 $stmt = db()->prepare($sql);
 $stmt->execute($params);
 $rows = $stmt->fetchAll();
 
-$schools = db()->query("SELECT DISTINCT school FROM spells WHERE school <> '' ORDER BY school")->fetchAll();
+$schools = db()->query("SELECT DISTINCT school FROM spells WHERE is_published=1 AND school <> '' ORDER BY school COLLATE utf8mb4_unicode_ci")->fetchAll();
 ?>
 <!doctype html>
 <html lang="uk">
@@ -46,6 +58,9 @@ $schools = db()->query("SELECT DISTINCT school FROM spells WHERE school <> '' OR
     input,select,button{padding:6px 8px}
     .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0}
     .muted{opacity:.75}
+    .badge{display:inline-block;border:1px solid #ddd;border-radius:999px;padding:1px 7px;font-size:12px;opacity:.85;margin-left:6px}
+    .warn{border-color:#f0c36d;background:#fff9e6}
+    label.chk{display:flex;gap:6px;align-items:center}
   </style>
 </head>
 <body>
@@ -53,12 +68,14 @@ $schools = db()->query("SELECT DISTINCT school FROM spells WHERE school <> '' OR
 
 <form method="get" class="row">
   <input name="q" placeholder="пошук..." value="<?= htmlspecialchars($q) ?>">
+
   <select name="level">
     <option value="">будь-який рівень</option>
     <?php for ($i=0; $i<=9; $i++): ?>
       <option value="<?= $i ?>" <?= ($level===(string)$i ? 'selected' : '') ?>><?= $i ?></option>
     <?php endfor; ?>
   </select>
+
   <select name="school">
     <option value="">будь-яка школа</option>
     <?php foreach ($schools as $s): ?>
@@ -67,8 +84,15 @@ $schools = db()->query("SELECT DISTINCT school FROM spells WHERE school <> '' OR
       </option>
     <?php endforeach; ?>
   </select>
+
+  <label class="chk">
+    <input type="checkbox" name="changed" value="1" <?= $changedOnly ? 'checked' : '' ?>>
+    тільки змінені
+  </label>
+
   <button type="submit">Знайти</button>
-  <?php if ($q !== '' || $level !== '' || $school !== ''): ?>
+
+  <?php if ($q !== '' || $level !== '' || $school !== '' || $changedOnly): ?>
     <a class="muted" href="/spells.php">скинути</a>
   <?php endif; ?>
 </form>
@@ -79,6 +103,11 @@ $schools = db()->query("SELECT DISTINCT school FROM spells WHERE school <> '' OR
     <a href="/spell.php?slug=<?= urlencode((string)$r['slug']) ?>">
       <?= htmlspecialchars((string)$r['name']) ?>
     </a>
+
+    <?php if ((int)$r['has_override'] === 1): ?>
+      <span class="badge warn">changed</span>
+    <?php endif; ?>
+
     <span class="muted">— lvl <?= (int)$r['level'] ?>, <?= htmlspecialchars((string)$r['school']) ?></span>
   </li>
 <?php endforeach; ?>
