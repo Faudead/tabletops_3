@@ -41,13 +41,45 @@ if ($role === 'admin') {
                        JOIN users u ON u.id = c.owner_user_id
                        ORDER BY c.updated_at DESC")->fetchAll();
 } else {
-  $stmt = db()->prepare("SELECT c.*
-                         FROM characters c
-                         WHERE c.owner_user_id=?
-                         ORDER BY c.updated_at DESC");
-  $stmt->execute([$uid]);
-  $rows = $stmt->fetchAll();
-}
+    // 1) Мої персонажі
+    $stmt = db()->prepare("
+      SELECT c.*
+      FROM characters c
+      WHERE c.owner_user_id=?
+      ORDER BY c.updated_at DESC
+    ");
+    $stmt->execute([$uid]);
+    $rows = $stmt->fetchAll();
+  
+    // 2) Доступні мені (shared)
+    $st2 = db()->prepare("
+      SELECT c.*, ca.can_edit, u.username AS owner_username
+      FROM character_access ca
+      JOIN characters c ON c.id = ca.character_id
+      JOIN users u ON u.id = c.owner_user_id
+      WHERE ca.user_id=?
+      ORDER BY c.updated_at DESC
+    ");
+    $st2->execute([$uid]);
+    $shared = $st2->fetchAll();
+  }
+  
+  
+
+$stmt = db()->prepare("
+  SELECT c.*, ca.can_edit, u.username AS owner_username
+  FROM character_access ca
+  JOIN characters c ON c.id = ca.character_id
+  JOIN users u ON u.id = c.owner_user_id
+  WHERE ca.user_id=?
+  ORDER BY c.updated_at DESC
+");
+$stmt->execute([$uid]);
+$shared = $stmt->fetchAll();
+
+
+
+
 ?>
 <!doctype html>
 <html lang="uk">
@@ -80,6 +112,43 @@ if ($role === 'admin') {
       </li>
     <?php endforeach; ?>
   </ul>
+  <ul>
+    <?php foreach ($rows as $c): ?>
+      <li>
+        <a href="/character.php?id=<?= (int)$c['id'] ?>">
+          <?= htmlspecialchars((string)$c['name']) ?>
+        </a>
+        — lvl <?= (int)$c['level'] ?> <?= htmlspecialchars((string)$c['class_name']) ?>
+        <?php if ($role === 'admin'): ?>
+          <small>(owner: <?= htmlspecialchars((string)($c['username'] ?? '')) ?>)</small>
+        <?php endif; ?>
+      </li>
+    <?php endforeach; ?>
+  </ul>
+
+  <!-- 🔽 ОТУТ ДОДАЄМО БЛОК SHARED -->
+  <?php if ($role !== 'admin'): ?>
+    <h2>Доступні мені</h2>
+
+    <?php if (!empty($shared)): ?>
+      <ul>
+        <?php foreach ($shared as $c): ?>
+          <li>
+            <a href="/character.php?id=<?= (int)$c['id'] ?>">
+              <?= htmlspecialchars((string)$c['name']) ?>
+            </a>
+
+            <span style="opacity:.75">
+              — <?= ((int)($c['can_edit'] ?? 0) === 1) ? 'edit' : 'read-only' ?>
+              · owner: <?= htmlspecialchars((string)($c['owner_username'] ?? '')) ?>
+            </span>
+          </li>
+        <?php endforeach; ?>
+      </ul>
+    <?php else: ?>
+      <p style="opacity:.75">Наразі немає персонажів, до яких вам видано доступ.</p>
+    <?php endif; ?>
+  <?php endif; ?>
 
 
 </body>

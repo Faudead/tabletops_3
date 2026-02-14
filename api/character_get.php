@@ -27,11 +27,22 @@ if (!$ch) {
   exit;
 }
 
+// access: admin OR owner OR shared
+$canEdit = false;
+
 if ($role !== 'admin' && (int)$ch['owner_user_id'] !== $uid) {
-  http_response_code(403);
-  echo json_encode(['ok' => false, 'error' => 'Forbidden']);
-  exit;
-}
+    $accSt = $pdo->prepare("SELECT can_edit FROM character_access WHERE character_id=? AND user_id=? LIMIT 1");
+    $accSt->execute([$charId, $uid]);
+    $acc = $accSt->fetch();
+  
+    if (!$acc || (int)$acc['can_edit'] !== 1) {
+      http_response_code(403);
+      echo "Forbidden";
+      exit;
+    }
+  }
+  
+
 
 // 1) characters -> identity частково
 // 2) підтаблиці -> state.*

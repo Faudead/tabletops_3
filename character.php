@@ -16,7 +16,29 @@ $stmt = db()->prepare("SELECT * FROM characters WHERE id=?");
 $stmt->execute([$charId]);
 $ch = $stmt->fetch();
 if (!$ch) { http_response_code(404); echo "Not found"; exit; }
-if ($role !== 'admin' && (int)$ch['owner_user_id'] !== $uid) { http_response_code(403); echo "Forbidden"; exit; }
+// access: admin OR owner OR shared
+$canEdit = false;
+
+if ($role === 'admin' || (int)$ch['owner_user_id'] === $uid) {
+  $canEdit = true;
+} else {
+  $accSt = db()->prepare("
+    SELECT can_edit
+    FROM character_access
+    WHERE character_id=? AND user_id=?
+    LIMIT 1
+  ");
+  $accSt->execute([$charId, $uid]);
+  $acc = $accSt->fetch();
+
+  if (!$acc) {
+    http_response_code(403);
+    echo "Forbidden";
+    exit;
+  }
+
+  $canEdit = ((int)$acc['can_edit'] === 1);
+}
 
 $st = db()->prepare("SELECT * FROM character_stats WHERE character_id=?");
 $st->execute([$charId]);
@@ -46,6 +68,21 @@ $ab = db()->prepare("SELECT * FROM character_abilities WHERE character_id=? ORDE
 $ab->execute([$charId]);
 $abilities = $ab->fetchAll();
 
+$shared = [];
+if ($role === 'admin') {
+  $st2 = db()->prepare("
+    SELECT a.user_id, a.can_edit, u.username
+    FROM character_access a
+    JOIN users u ON u.id = a.user_id
+    WHERE a.character_id=?
+    ORDER BY u.username
+  ");
+  $st2->execute([$charId]);
+  $shared = $st2->fetchAll();
+}
+
+
+
 function h($v): string { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); }
 ?>
 <!doctype html>
@@ -61,6 +98,50 @@ function h($v): string { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'
 <p><a href="/characters.php">← back</a></p>
 
 <h1><?= h($ch['name']) ?></h1>
+
+<?php if ($role === 'admin'): ?>
+  <section style="border:1px solid #ddd; padding:12px; border-radius:10px; margin:12px 0;">
+    <h2>Доступ до чарника</h2>
+
+    <form method="post" action="/api/character_share.php" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
+      <input type="hidden" name="character_id" value="<?= (int)$charId ?>">
+
+      <label>
+        Username кому видати
+        <input name="username" placeholder="наприклад: nika" required>
+      </label>
+
+      <label style="display:flex; gap:6px; align-items:center; margin-bottom:6px;">
+        <input type="checkbox" name="can_edit" value="1">
+        може редагувати
+      </label>
+
+      <button type="submit">Видати/оновити доступ</button>
+    </form>
+
+    <?php if ($shares): ?>
+      <h3 style="margin-top:12px;">Вже мають доступ</h3>
+      <ul>
+        <?php foreach ($shares as $s): ?>
+          <li style="margin:6px 0;">
+            <b><?= h($s['username']) ?></b>
+            — <?= ((int)$s['can_edit']===1) ? 'edit' : 'view' ?>
+
+            <form method="post" action="/api/character_unshare.php" style="display:inline;">
+              <input type="hidden" name="character_id" value="<?= (int)$charId ?>">
+              <input type="hidden" name="user_id" value="<?= (int)$s['user_id'] ?>">
+              <button type="submit" onclick="return confirm('Забрати доступ у <?= h($s['username']) ?>?')">забрати</button>
+            </form>
+          </li>
+        <?php endforeach; ?>
+      </ul>
+    <?php else: ?>
+      <p style="opacity:.75; margin-top:10px;">Поки нікому не видано доступ.</p>
+    <?php endif; ?>
+  </section>
+<?php endif; ?>
+
+
 
 <form method="post" action="/api/character_save.php?id=<?= (int)$charId ?>">
 
@@ -168,9 +249,12 @@ function h($v): string { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'
     </div>
   <?php endforeach; ?>
 
-  <p>
-    <button type="submit">Save</button>
-  </p>
+  <?php if ($canEdit): ?>
+  <button type="submit">Save</button>
+<?php else: ?>
+  <p style="color:#b00020;">У вас є доступ лише на перегляд. Зверніться до адміна, щоб отримати право редагування.</p>
+<?php endif; ?>
+
 </form>
 
 </body>

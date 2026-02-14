@@ -1,13 +1,15 @@
 <?php
 declare(strict_types=1);
 
-/**
- * Очікує, що сторінка вже підключила auth.php і є $user (або викличе require_login()).
- * Якщо в тебе в auth.php інакше називаються змінні — просто підправиш 2 рядки нижче.
- */
+require_once __DIR__ . '/auth.php';
+
+// якщо сторінка не передала $user — візьмемо з сесії або проженемо через require_login()
+if (!isset($user) || !is_array($user)) {
+  $user = current_user();
+  if (!$user) $user = require_login();
+}
 
 $isAdmin = (($user['role'] ?? '') === 'admin');
-
 ?>
 <nav style="display:flex; gap:12px; align-items:center; margin:12px 0;">
   <a href="/dashboard.php">Кабінет</a>
@@ -16,13 +18,12 @@ $isAdmin = (($user['role'] ?? '') === 'admin');
 
   <?php if ($isAdmin): ?>
     <a href="/admin_spells.php">Адмінка: заклинання</a>
-    <!-- якщо є/буде адмін-дашборд -->
-    <!-- <a href="/admin.php">Адмін</a> -->
   <?php endif; ?>
 
   <span style="margin-left:auto; opacity:.75;">
-  <?= htmlspecialchars((string)($user['email'] ?? 'user')) ?>
+    <?= htmlspecialchars((string)($user['email'] ?? $user['username'] ?? 'user')) ?>
   </span>
   <a href="/logout.php">Вийти</a>
 </nav>
 <hr>
+
