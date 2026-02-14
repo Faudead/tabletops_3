@@ -131,55 +131,88 @@ if (!empty($ch['avatar_data'])) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title><?= h($ch['name'] ?? 'Character') ?></title>
-  <link rel="stylesheet" href="/assets/app.css?v=1">
+  <link rel="stylesheet" href="/inc/char.css?v=1">
   <style>
-    .wrap { max-width: 1200px; margin: 20px auto; padding: 0 12px; }
-    .topbar { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom: 12px; }
-    .topbar .left { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-    .topbar .actions { display:flex; gap:8px; flex-wrap:wrap; }
-    .grid { display:grid; grid-template-columns: 360px 1fr; gap: 14px; }
-    @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
-    .card { background: var(--card, #141414); border:1px solid rgba(255,255,255,.08); border-radius: 12px; padding: 12px; }
-    .card h2 { margin: 0 0 10px; font-size: 16px; }
-    .row { display:flex; gap:10px; flex-wrap:wrap; }
-    .row > * { flex:1; min-width: 120px; }
-    label { display:block; font-size: 12px; color: var(--muted,#b7b7b7); margin-bottom: 10px; }
-    input, select, textarea { width:100%; padding:8px; border-radius: 10px; border:1px solid rgba(255,255,255,.10); background: rgba(0,0,0,.15); color: #fff; }
-    textarea { resize: vertical; }
-    .muted { color: var(--muted,#b7b7b7); font-size: 12px; }
-    .small { font-size: 12px; }
-    .pill { display:inline-block; padding:4px 8px; border-radius: 999px; background: rgba(255,255,255,.08); }
-    .btn { border:1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.06); color:#fff; padding:8px 10px; border-radius: 10px; cursor:pointer; }
-    .btn.primary { background: rgba(80, 160, 255, .20); border-color: rgba(80,160,255,.35); }
-    .btn.danger { background: rgba(255,80,80,.15); border-color: rgba(255,80,80,.35); }
-    .btn.secondary { background: rgba(255,255,255,.04); }
-    .btn[disabled] { opacity: .55; cursor: not-allowed; }
-    .avatarBox { display:flex; gap: 10px; align-items:flex-start; }
-    .avatarPreview { width: 96px; height: 96px; border-radius: 14px; border:1px solid rgba(255,255,255,.12); overflow:hidden; background: rgba(255,255,255,.05); display:flex; align-items:center; justify-content:center; }
-    .avatarPreview img { width:100%; height:100%; object-fit: cover; }
-    .tabs { display:flex; gap:8px; flex-wrap:wrap; margin: 0 0 10px; }
-    .tabs button { padding: 8px 10px; border-radius: 10px; border:1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.04); color:#fff; cursor:pointer; }
-    .tabs button.active { background: rgba(80,160,255,.20); border-color: rgba(80,160,255,.35); }
-    .sectionTitle { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom: 10px; }
-    .list { display:flex; flex-direction:column; gap:8px; }
-    .item { border:1px dashed rgba(255,255,255,.14); border-radius: 12px; padding: 10px; background: rgba(0,0,0,.12); }
-    .itemHead { display:flex; gap:8px; align-items:center; justify-content:space-between; margin-bottom: 6px; }
-    .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    @media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } }
-    .collapseToggle { cursor:pointer; user-select:none; display:flex; align-items:center; justify-content:space-between; gap:10px; }
-    .collapsible .cardBody { display:none; }
-    .collapsible.open .cardBody { display:block; }
-    .hint { color: var(--muted,#b7b7b7); font-size: 12px; }
-    .toast { position: fixed; right: 12px; bottom: 12px; padding: 10px 12px; border-radius: 12px; background: rgba(0,0,0,.85); border:1px solid rgba(255,255,255,.12); color:#fff; display:none; max-width: 420px; }
-    .toast.show { display:block; }
+    /* Extra styles for character.php on top of /inc/char.css */
+    /* Keep 3 columns; DO NOT HIDE the right column (char.css stacks at <1100px; that's fine). */
+    .shell{ grid-template-columns: 280px 1fr 320px; }
+
+    /* Legacy .btn support (file uses .btn classes) */
+    .btn{
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn.secondary{ background: #2b2c36; }
+    .btn.danger{ background: var(--danger); }
+    .btn[disabled]{ opacity:.65; cursor:not-allowed; }
+
+    /* Avatar preview */
+    .avatarPreview{
+      width: 96px;
+      height: 96px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      background: var(--panel-soft);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+    .avatarPreview img{ width:100%; height:100%; object-fit:cover; display:block; }
+    .avatarBox{ display:flex; gap: 12px; align-items:flex-start; }
+
+    /* Tabs */
+    .tabs{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom: 12px; }
+    .tabs button{
+      background: #2b2c36;
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .tabs button.active{
+      background: rgba(124, 92, 255, .25);
+      border-color: rgba(124, 92, 255, .45);
+    }
+/* Small UI helpers used by the file */
+    .muted{ color: var(--muted); }
+    .hint{ font-size: 12px; color: var(--muted); margin-top: 8px; }
+    .pill{ background: #2b2c36; padding: 6px 10px; border-radius: 999px; font-size: 12px; color: var(--muted); display:inline-block; }
+
+    .list{ display:flex; flex-direction:column; gap:10px; }
+    .item{ background: var(--panel-soft); border:1px solid var(--border); border-radius: 12px; padding: 10px; }
+    .itemHead{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
+
+    .toast{
+      position: fixed;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      background: rgba(20,20,24,.92);
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      border-radius: 12px;
+      color: var(--text);
+      z-index: 9999;
+      display:none;
+    }
+    .toast.show{ display:block; }
   </style>
 </head>
 <body>
 
-<div class="wrap">
-
-  <div class="topbar">
-    <div class="left">
+<header class="topbar">
+<div class="brand">
       <a class="btn secondary" href="/characters.php">← Назад</a>
       <div>
         <div style="font-size:18px; font-weight:700; line-height:1.1;"><?= h($ch['name']) ?></div>
@@ -199,18 +232,17 @@ if (!empty($ch['avatar_data'])) {
       <button class="btn primary" id="btnSave" <?= $canEdit ? '' : 'disabled' ?>>Save</button>
       <button class="btn secondary" id="btnExport">Export JSON</button>
     </div>
-  </div>
+</header>
 
-  <form id="charForm" method="post" action="/api/character_save.php">
-    <input type="hidden" name="id" value="<?= (int)$charId ?>">
+<form id="charForm" method="post" action="/api/character_save.php">
+  <input type="hidden" name="id" value="<?= (int)$charId ?>">
 
+  <main class="shell">
 
-    <div class="grid">
-      <aside class="card">
-
-        <h2>Basics</h2>
-
-        <div class="avatarBox" style="margin-bottom:10px;">
+    <aside class="sidebar-left">
+      <section class="card">
+  <h2>Avatar</h2>
+  <div class="avatarBox" style="margin-bottom:10px;">
           <div class="avatarPreview" id="avatarPreview">
             <?php if ($avatarSrc): ?>
               <img src="<?= h($avatarSrc) ?>" alt="avatar">
@@ -234,76 +266,32 @@ if (!empty($ch['avatar_data'])) {
             </div>
           </div>
         </div>
-
-        <div class="row">
-          <label>Name
-            <input name="name" value="<?= h($ch['name']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-          </label>
-          <label>Player
-            <input name="player_name" value="<?= h($ch['player_name']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-          </label>
-        </div>
-
-        <div class="row">
-          <label>Race
-            <input name="race" value="<?= h($ch['race']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-          </label>
-          <label>Class
-            <input name="class_name" value="<?= h($ch['class_name']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-          </label>
-        </div>
-
-        <div class="row">
-          <label>Level
-            <input type="number" min="1" max="20" name="level" value="<?= (int)($ch['level'] ?? 1) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-          </label>
-          <label>Alignment
-            <input name="alignment" value="<?= h($ch['alignment']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-          </label>
-        </div>
-
-        <div class="row">
-          <label>Background
-            <input name="background" value="<?= h($ch['background']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-          </label>
-          <label>XP
-            <input name="xp" value="<?= h($ch['xp']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-          </label>
-        </div>
-
-        <div class="row">
-          <label>Proficiency Bonus
-            <input type="number" min="0" max="20" name="proficiency_bonus" value="<?= (int)($res['proficiency_bonus'] ?? 2) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-          </label>
-        </div>
-
-        <?php if ($role === 'admin'): ?>
-        <hr style="border:0;border-top:1px solid rgba(255,255,255,.10); margin: 12px 0;">
-        <h2>Shared access</h2>
-        <div class="hint" style="margin-bottom:8px;">Показує, кому виданий доступ через character_access.</div>
-        <div class="list">
-          <?php if (!$shared): ?>
-            <div class="muted small">Немає share-записів.</div>
-          <?php else: ?>
-            <?php foreach ($shared as $s): ?>
-              <div class="item">
-                <div class="itemHead">
-                  <div><b><?= h($s['username'] ?? ('#'.$s['user_id'])) ?></b></div>
-                  <div class="pill"><?= ((int)$s['can_edit'] === 1) ? 'edit' : 'view' ?></div>
-                </div>
-              </div>
-            <?php endforeach; ?>
-          <?php endif; ?>
-        </div>
-        <?php endif; ?>
-
-        <div class="hint" style="font-size:12px; color:var(--muted); margin-top:10px;">
+  <div class="hint" style="font-size:12px; color:var(--muted); margin-top:10px;">
           Зображення можна зберігати всередині БД як data (base64). Не вантаж гігантські файли 🙂
         </div>
-      </aside>
+</section>
 
-      <main class="card">
-        <div class="tabs">
+      <section class="card" style="margin-top: 12px;">
+            <h2>Notes</h2>
+            <label>Session notes
+              <textarea id="sessionNotes" name="session_notes" rows="12" <?= $canEdit ? '' : 'disabled' ?>><?= h($notes["session_notes"] ?? "") ?></textarea>
+            </label>
+            <label>Quick notes
+              <textarea id="quickNotes" name="quick_notes" placeholder="Коротко: що зараз відбувається, цілі, ініціатива..." rows="8" <?= $canEdit ? '' : 'disabled' ?>><?= h($notes["quick_notes"] ?? "") ?></textarea>
+            </label>
+          </section>
+
+      <section class="card" hidden id="historyPanel">
+            <h2>History</h2>
+            <div class="hint" style="font-size:12px; color:var(--muted);">Поки що плейсхолдер під історію збережень.</div>
+            <button class="secondary" type="button" id="btnRefreshHistory" disabled>Refresh</button>
+            <div id="historyList"></div>
+          </section>
+    </aside>
+
+    <section class="main">
+      <section class="card">
+<div class="tabs">
           <button type="button" class="active" data-tab="sheet">Sheet</button>
           <button type="button" data-tab="combat">Combat</button>
           <button type="button" data-tab="inventory">Inventory</button>
@@ -388,24 +376,9 @@ if (!empty($ch['avatar_data'])) {
 
           </div>
 
-          <section class="card" style="margin-top: 12px;">
-            <h2>Notes</h2>
-            <label>Session notes
-              <textarea id="sessionNotes" name="session_notes" rows="12" <?= $canEdit ? '' : 'disabled' ?>><?= h($notes["session_notes"] ?? "") ?></textarea>
-            </label>
-            <label>Quick notes
-              <textarea id="quickNotes" name="quick_notes" placeholder="Коротко: що зараз відбувається, цілі, ініціатива..." rows="8" <?= $canEdit ? '' : 'disabled' ?>><?= h($notes["quick_notes"] ?? "") ?></textarea>
-            </label>
-          </section>
+          
 
-          <section class="card" hidden id="historyPanel">
-            <h2>History</h2>
-            <div class="hint" style="font-size:12px; color:var(--muted);">Поки що плейсхолдер під історію збережень.</div>
-            <button class="secondary" type="button" id="btnRefreshHistory" disabled>Refresh</button>
-            <div id="historyList"></div>
-          </section>
-
-          <section class="card collapsible open" data-collapse="identity" style="margin-top: 12px;">
+<section class="card collapsible open" data-collapse="identity" style="margin-top: 12px;">
             <div class="collapseToggle">
               <h2 style="margin:0;">Identity</h2>
               <span class="muted">toggle</span>
@@ -604,12 +577,143 @@ if (!empty($ch['avatar_data'])) {
             </div>
           </section>
         </section>
+</section>
+    </section>
 
-      </main>
-    </div>
-  </form>
+    <aside class="sidebar-right">
+      <section class="card">
+<h2>Basics</h2>
 
-</div>
+        
+
+        <div class="row">
+          <label>Name
+            <input name="name" value="<?= h($ch['name']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+          </label>
+          <label>Player
+            <input name="player_name" value="<?= h($ch['player_name']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+          </label>
+        </div>
+
+        <div class="row">
+          <label>Race
+            <input name="race" value="<?= h($ch['race']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+          </label>
+          <label>Class
+            <input name="class_name" value="<?= h($ch['class_name']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+          </label>
+        </div>
+
+        <div class="row">
+          <label>Level
+            <input type="number" min="1" max="20" name="level" value="<?= (int)($ch['level'] ?? 1) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+          </label>
+          <label>Alignment
+            <input name="alignment" value="<?= h($ch['alignment']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+          </label>
+        </div>
+
+        <div class="row">
+          <label>Background
+            <input name="background" value="<?= h($ch['background']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+          </label>
+          <label>XP
+            <input name="xp" value="<?= h($ch['xp']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+          </label>
+        </div>
+
+        <div class="row">
+          <label>Proficiency Bonus
+            <input type="number" min="0" max="20" name="proficiency_bonus" value="<?= (int)($res['proficiency_bonus'] ?? 2) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+          </label>
+        </div>
+
+        <?php if ($role === 'admin'): ?>
+        <hr style="border:0;border-top:1px solid rgba(255,255,255,.10); margin: 12px 0;">
+        <h2>Shared access</h2>
+        <div class="hint" style="margin-bottom:8px;">Показує, кому виданий доступ через character_access.</div>
+        <div class="list">
+          <?php if (!$shared): ?>
+            <div class="muted small">Немає share-записів.</div>
+          <?php else: ?>
+            <?php foreach ($shared as $s): ?>
+              <div class="item">
+                <div class="itemHead">
+                  <div><b><?= h($s['username'] ?? ('#'.$s['user_id'])) ?></b></div>
+                  <div class="pill"><?= ((int)$s['can_edit'] === 1) ? 'edit' : 'view' ?></div>
+                </div>
+              </div>
+            <?php endforeach; ?>
+          <?php endif; ?>
+        </div>
+        <?php endif; ?>
+</section>
+
+
+      <section class="card collapsible" data-collapse="skills">
+        <div class="collapseToggle">
+          <h2 style="margin:0;">Skills</h2>
+          <span class="muted">toggle</span>
+        </div>
+        <div class="cardBody">
+          <div class="hint">Total = stat mod + PB (якщо proficient).</div>
+          <div id="skillsList"></div>
+        </div>
+      </section>
+
+
+      <section class="card collapsible" data-collapse="proficiencies">
+        <div class="collapseToggle">
+          <h2 style="margin:0;">Proficiencies</h2>
+          <span class="muted">toggle</span>
+        </div>
+        <div class="cardBody">
+          <div class="profBlock">
+            <div class="profHead">
+              <span>Weapons</span>
+              <button type="button" class="smallBtn" id="addProfWeapon" <?= $canEdit ? '' : 'disabled' ?>>+ Add</button>
+            </div>
+            <div id="profWeapons"></div>
+          </div>
+
+          <div class="profBlock">
+            <div class="profHead">
+              <span>Armor</span>
+              <button type="button" class="smallBtn" id="addProfArmor" <?= $canEdit ? '' : 'disabled' ?>>+ Add</button>
+            </div>
+            <div id="profArmor"></div>
+          </div>
+
+          <div class="profBlock">
+            <div class="profHead">
+              <span>Tools</span>
+              <button type="button" class="smallBtn" id="addProfTools" <?= $canEdit ? '' : 'disabled' ?>>+ Add</button>
+            </div>
+            <div id="profTools"></div>
+          </div>
+
+          <div class="profBlock">
+            <div class="profHead">
+              <span>Languages</span>
+              <button type="button" class="smallBtn" id="addProfLang" <?= $canEdit ? '' : 'disabled' ?>>+ Add</button>
+            </div>
+            <div id="profLang"></div>
+          </div>
+
+          <div class="profBlock">
+            <div class="profHead">
+              <span>Vehicles / Transport</span>
+              <button type="button" class="smallBtn" id="addProfVehicle" <?= $canEdit ? '' : 'disabled' ?>>+ Add</button>
+            </div>
+            <div id="profVehicle"></div>
+          </div>
+        </div>
+      </section>
+
+    </aside>
+
+  </main>
+</form>
 
 <div class="toast" id="toast"></div>
 
