@@ -6,3 +6,8 @@ cat > .gitignore <<'EOF'
 .DS_Store
 Thumbs.db
 EOF
+# forbid direct access to /inc except css
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^inc/(?!char\.css$). - [F,L]
+</IfModule>

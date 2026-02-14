@@ -90,17 +90,27 @@ function h($v): string { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="/inc/char.css">
   <title><?= h($ch['name']) ?></title>
 </head>
 <body>
 <?php require_once __DIR__ . '/inc/nav.php'; ?>
 
-<p><a href="/characters.php">← back</a></p>
+<div class="topbar">
+  <div class="brand"><?= h($ch['name']) ?></div>
+  <div class="actions">
+    <a href="/characters.php"><button type="button" class="secondary">← back</button></a>
 
-<h1><?= h($ch['name']) ?></h1>
+    <?php if ($canEdit): ?>
+      <button type="submit" form="charForm">Save</button>
+    <?php else: ?>
+      <span class="badge">read-only</span>
+    <?php endif; ?>
+  </div>
+</div>
 
 <?php if ($role === 'admin'): ?>
-  <section style="border:1px solid #ddd; padding:12px; border-radius:10px; margin:12px 0;">
+  <section class="card" style="margin-top:12px;">
     <h2>Доступ до чарника</h2>
 
     <form method="post" action="/api/character_share.php" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
@@ -119,10 +129,10 @@ function h($v): string { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'
       <button type="submit">Видати/оновити доступ</button>
     </form>
 
-    <?php if ($shares): ?>
+    <?php if (!empty($shared)): ?>
       <h3 style="margin-top:12px;">Вже мають доступ</h3>
       <ul>
-        <?php foreach ($shares as $s): ?>
+        <?php foreach ($shared as $s): ?>
           <li style="margin:6px 0;">
             <b><?= h($s['username']) ?></b>
             — <?= ((int)$s['can_edit']===1) ? 'edit' : 'view' ?>
@@ -141,120 +151,228 @@ function h($v): string { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'
   </section>
 <?php endif; ?>
 
+<form id="charForm" method="post" action="/api/character_save.php?id=<?= (int)$charId ?>">
 
+  <div class="shell">
+    <!-- LEFT -->
+    <aside class="sidebar-left">
 
-<form method="post" action="/api/character_save.php?id=<?= (int)$charId ?>">
+      <section class="card">
+        <h2>Identity</h2>
 
-  <h2>Identity</h2>
-  <label>Name <input name="name" value="<?= h($ch['name']) ?>"></label><br>
-  <label>Class <input name="class_name" value="<?= h($ch['class_name']) ?>"></label><br>
-  <label>Level <input name="level" type="number" min="1" max="20" value="<?= (int)$ch['level'] ?>"></label><br>
-  <label>Race <input name="race" value="<?= h($ch['race']) ?>"></label><br>
-  <label>Alignment <input name="alignment" value="<?= h($ch['alignment']) ?>"></label><br>
-  <label>Background <input name="background" value="<?= h($ch['background']) ?>"></label><br>
-  <label>XP <input name="xp" value="<?= h($ch['xp']) ?>"></label><br>
-  <label>Player name <input name="player_name" value="<?= h($ch['player_name']) ?>"></label><br>
+        <label>Name <input name="name" value="<?= h($ch['name']) ?>"></label>
+        <label>Class <input name="class_name" value="<?= h($ch['class_name']) ?>"></label>
 
-  <label>Avatar URL <input name="avatar_url" value="<?= h($ch['avatar_url']) ?>"></label><br>
-  <label>Avatar data (dataURL) <textarea name="avatar_data" rows="2"><?= h($ch['avatar_data']) ?></textarea></label>
+        <div class="grid2">
+          <label>Level <input class="numSmall" name="level" type="number" min="1" max="20" value="<?= (int)$ch['level'] ?>"></label>
+          <label>Race <input name="race" value="<?= h($ch['race']) ?>"></label>
+        </div>
 
-  <h2>Resources</h2>
-  <label>HP current <input name="hp_current" type="number" value="<?= (int)($res['hp_current'] ?? 10) ?>"></label><br>
-  <label>HP max <input name="hp_max" type="number" value="<?= (int)($res['hp_max'] ?? 10) ?>"></label><br>
-  <label>HP temp <input name="hp_temp" type="number" value="<?= (int)($res['hp_temp'] ?? 0) ?>"></label><br>
-  <label>PB <input name="proficiency_bonus" type="number" value="<?= (int)($res['proficiency_bonus'] ?? 2) ?>"></label><br>
-  <label>AC <input name="ac" type="number" value="<?= (int)($res['ac'] ?? 10) ?>"></label><br>
-  <label>Passive perception override (empty = auto)
-    <input name="passive_perception_override" value="<?= h($res['passive_perception_override']) ?>">
-  </label><br>
-  <label>Inspiration <input name="inspiration" type="checkbox" value="1" <?= !empty($res['inspiration']) ? 'checked' : '' ?>></label><br>
-  <label>Speed <input name="speed" type="number" value="<?= (int)($res['speed'] ?? 30) ?>"></label><br>
+        <label>Alignment <input name="alignment" value="<?= h($ch['alignment']) ?>"></label>
+        <label>Background <input name="background" value="<?= h($ch['background']) ?>"></label>
+        <label>XP <input name="xp" value="<?= h($ch['xp']) ?>"></label>
+        <label>Player name <input name="player_name" value="<?= h($ch['player_name']) ?>"></label>
 
-  <h2>Stats</h2>
-  <?php
-    $map = ['str'=>'STR','dex'=>'DEX','con'=>'CON','int'=>'INT','wis'=>'WIS','cha'=>'CHA'];
-    foreach ($map as $k=>$label):
-  ?>
-    <label><?= $label ?>
-      <input name="<?= $k ?>_score" type="number" value="<?= (int)($stats["{$k}_score"] ?? 10) ?>">
-    </label>
-    <label>Save prof
-      <input name="save_<?= $k ?>" type="checkbox" value="1" <?= !empty($stats["save_{$k}"]) ? 'checked' : '' ?>>
-    </label>
-    <br>
-  <?php endforeach; ?>
+        <div class="grid2">
+          <label>Avatar URL <input name="avatar_url" value="<?= h($ch['avatar_url']) ?>"></label>
+          <label>Avatar data <input name="avatar_data" value="<?= h($ch['avatar_data']) ?>"></label>
+        </div>
+      </section>
 
-  <h2>Coins</h2>
-  <label>GP <input name="gp" type="number" value="<?= (int)($coins['gp'] ?? 0) ?>"></label>
-  <label>SP <input name="sp" type="number" value="<?= (int)($coins['sp'] ?? 0) ?>"></label>
-  <label>CP <input name="cp" type="number" value="<?= (int)($coins['cp'] ?? 0) ?>"></label>
+      <section class="card vitalsCard">
+        <h2>Resources</h2>
 
-  <h2>Inventory</h2>
-  <div id="inv">
-    <?php foreach ($inventory as $i => $it): ?>
-      <div style="border:1px solid #ccc; padding:8px; margin:6px 0;">
-        <input type="hidden" name="inv_id[]" value="<?= (int)$it['id'] ?>">
-        <label>Name <input name="inv_name[]" value="<?= h($it['name']) ?>"></label>
-        <label>Eq <input type="checkbox" name="inv_equipped[<?= $i ?>]" value="1" <?= !empty($it['equipped'])?'checked':'' ?>></label>
-        <label>Cons <input type="checkbox" name="inv_consumable[<?= $i ?>]" value="1" <?= !empty($it['consumable'])?'checked':'' ?>></label>
-        <label>Qty <input name="inv_qty[]" type="number" value="<?= (int)$it['qty'] ?>"></label>
-        <label>Charges <input name="inv_charges[]" type="number" value="<?= (int)$it['charges'] ?>"></label>
-        <label>Icon <input name="inv_icon[]" value="<?= h($it['icon']) ?>"></label><br>
-        <label>Description<br><textarea name="inv_desc[]" rows="2"><?= h($it['description']) ?></textarea></label><br>
-        <label>Delete <input type="checkbox" name="inv_delete[]" value="<?= (int)$it['id'] ?>"></label>
-      </div>
-    <?php endforeach; ?>
+        <div class="row">
+          <label>HP <input class="numSmall" name="hp_current" type="number" value="<?= (int)($res['hp_current'] ?? 10) ?>"></label>
+          <label>Max <input class="numSmall" name="hp_max" type="number" value="<?= (int)($res['hp_max'] ?? 10) ?>"></label>
+          <label>Temp <input class="numSmall" name="hp_temp" type="number" value="<?= (int)($res['hp_temp'] ?? 0) ?>"></label>
+        </div>
+
+        <div class="row">
+          <label>PB <input class="numSmall" name="proficiency_bonus" type="number" value="<?= (int)($res['proficiency_bonus'] ?? 2) ?>"></label>
+          <label>AC <input class="numSmall" name="ac" type="number" value="<?= (int)($res['ac'] ?? 10) ?>"></label>
+          <label>Speed <input class="numSmall" name="speed" type="number" value="<?= (int)($res['speed'] ?? 30) ?>"></label>
+        </div>
+
+        <label>Passive perception override
+          <input name="passive_perception_override" value="<?= h($res['passive_perception_override']) ?>">
+        </label>
+
+        <label class="row-inline">
+          <input name="inspiration" type="checkbox" value="1" <?= !empty($res['inspiration']) ? 'checked' : '' ?>>
+          Inspiration
+        </label>
+      </section>
+
+      <section class="card">
+        <h2>Coins</h2>
+        <div class="coinsPanel">
+          <div class="coinsGrid">
+            <label>GP <input class="numSmall" name="gp" type="number" value="<?= (int)($coins['gp'] ?? 0) ?>"></label>
+            <label>SP <input class="numSmall" name="sp" type="number" value="<?= (int)($coins['sp'] ?? 0) ?>"></label>
+            <label>CP <input class="numSmall" name="cp" type="number" value="<?= (int)($coins['cp'] ?? 0) ?>"></label>
+          </div>
+        </div>
+      </section>
+
+    </aside>
+
+    <!-- MAIN -->
+    <main class="main">
+
+      <section class="card" id="statsCard">
+        <h2>Stats</h2>
+
+        <div class="statsGridCompact">
+          <?php
+            $map = ['str'=>'STR','dex'=>'DEX','con'=>'CON','int'=>'INT','wis'=>'WIS','cha'=>'CHA'];
+            foreach ($map as $k=>$label):
+          ?>
+            <div class="statCell">
+              <span class="statKey"><?= $label ?></span>
+              <input name="<?= $k ?>_score" type="number" value="<?= (int)($stats["{$k}_score"] ?? 10) ?>">
+              <span class="statMod">save</span>
+              <input type="checkbox" name="save_<?= $k ?>" value="1" <?= !empty($stats["save_{$k}"]) ? 'checked' : '' ?>>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      </section>
+
+      <section class="card collapsible" id="invCard">
+        <h2 onclick="this.parentElement.classList.toggle('collapsed')">Inventory</h2>
+        <div class="cardBody">
+          <?php foreach ($inventory as $i => $it): ?>
+            <div class="card" style="box-shadow:none; margin:10px 0;">
+              <input type="hidden" name="inv_id[]" value="<?= (int)$it['id'] ?>">
+
+              <div class="grid2">
+                <label>Name <input name="inv_name[]" value="<?= h($it['name']) ?>"></label>
+                <label>Icon <input name="inv_icon[]" value="<?= h($it['icon']) ?>"></label>
+              </div>
+
+              <div class="row">
+                <label>Qty <input class="numSmall" name="inv_qty[]" type="number" value="<?= (int)$it['qty'] ?>"></label>
+                <label>Charges <input class="numSmall" name="inv_charges[]" type="number" value="<?= (int)$it['charges'] ?>"></label>
+
+                <label class="row-inline">
+                  <input type="checkbox" name="inv_equipped[<?= $i ?>]" value="1" <?= !empty($it['equipped'])?'checked':'' ?>>
+                  Equipped
+                </label>
+
+                <label class="row-inline">
+                  <input type="checkbox" name="inv_consumable[<?= $i ?>]" value="1" <?= !empty($it['consumable'])?'checked':'' ?>>
+                  Consumable
+                </label>
+              </div>
+
+              <label>Description
+                <textarea name="inv_desc[]" rows="2"><?= h($it['description']) ?></textarea>
+              </label>
+
+              <label class="row-inline">
+                <input type="checkbox" name="inv_delete[]" value="<?= (int)$it['id'] ?>">
+                Delete
+              </label>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      </section>
+
+      <?php if (!$canEdit): ?>
+        <p style="color:#b00020;">У вас є доступ лише на перегляд. Зверніться до адміна, щоб отримати право редагування.</p>
+      <?php endif; ?>
+
+    </main>
+
+    <!-- RIGHT -->
+    <aside class="sidebar-right">
+
+      <section class="card collapsible">
+        <h2 onclick="this.parentElement.classList.toggle('collapsed')">Weapons</h2>
+        <div class="cardBody">
+          <?php foreach ($weapons as $w): ?>
+            <div class="card" style="box-shadow:none; margin:10px 0;">
+              <input type="hidden" name="wp_id[]" value="<?= (int)$w['id'] ?>">
+              <label>Name <input name="wp_name[]" value="<?= h($w['name']) ?>"></label>
+              <div class="grid2">
+                <label>ATK <input name="wp_atk[]" value="<?= h($w['atk']) ?>"></label>
+                <label>DMG <input name="wp_dmg[]" value="<?= h($w['dmg']) ?>"></label>
+              </div>
+              <label class="row-inline">
+                <input type="checkbox" name="wp_delete[]" value="<?= (int)$w['id'] ?>">
+                Delete
+              </label>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      </section>
+
+      <section class="card collapsible">
+        <h2 onclick="this.parentElement.classList.toggle('collapsed')">Spells</h2>
+        <div class="cardBody">
+          <?php foreach ($spells as $s): ?>
+            <div class="card" style="box-shadow:none; margin:10px 0;">
+              <input type="hidden" name="sp_id[]" value="<?= (int)$s['id'] ?>">
+
+              <div class="grid2">
+                <label>UID <input name="sp_uid[]" value="<?= h($s['spell_uid']) ?>"></label>
+                <label>Name <input name="sp_name[]" value="<?= h($s['name']) ?>"></label>
+              </div>
+
+              <div class="row">
+                <label>Kind
+                  <select name="sp_kind[]">
+                    <option value="spell" <?= (($s['kind'] ?? 'spell')==='spell')?'selected':'' ?>>spell</option>
+                    <option value="cantrip" <?= (($s['kind'] ?? '')==='cantrip')?'selected':'' ?>>cantrip</option>
+                  </select>
+                </label>
+                <label>Level <input class="numSmall" name="sp_level[]" type="number" min="0" max="9" value="<?= (int)$s['level'] ?>"></label>
+                <label>Charges <input class="numSmall" name="sp_charges[]" type="number" value="<?= (int)$s['charges'] ?>"></label>
+
+                <label class="row-inline">
+                  <input name="sp_used[]" type="checkbox" value="<?= (int)$s['id'] ?>" <?= !empty($s['used'])?'checked':'' ?>>
+                  Used
+                </label>
+              </div>
+
+              <label>Description
+                <textarea name="sp_desc[]" rows="2"><?= h($s['description']) ?></textarea>
+              </label>
+
+              <label class="row-inline">
+                <input type="checkbox" name="sp_delete[]" value="<?= (int)$s['id'] ?>">
+                Delete
+              </label>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      </section>
+
+      <section class="card collapsible">
+        <h2 onclick="this.parentElement.classList.toggle('collapsed')">Abilities</h2>
+        <div class="cardBody">
+          <?php foreach ($abilities as $a): ?>
+            <div class="card" style="box-shadow:none; margin:10px 0;">
+              <input type="hidden" name="ab_id[]" value="<?= (int)$a['id'] ?>">
+              <label>Name <input name="ab_name[]" value="<?= h($a['name']) ?>"></label>
+              <div class="grid2">
+                <label>Kind <input name="ab_kind[]" value="<?= h($a['kind']) ?>"></label>
+                <label>Source <input name="ab_source[]" value="<?= h($a['source']) ?>"></label>
+              </div>
+              <label>Description
+                <textarea name="ab_desc[]" rows="2"><?= h($a['description']) ?></textarea>
+              </label>
+              <label class="row-inline">
+                <input type="checkbox" name="ab_delete[]" value="<?= (int)$a['id'] ?>">
+                Delete
+              </label>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      </section>
+
+    </aside>
   </div>
-
-  <h2>Weapons</h2>
-  <?php foreach ($weapons as $w): ?>
-    <div style="border:1px solid #ccc; padding:8px; margin:6px 0;">
-      <input type="hidden" name="wp_id[]" value="<?= (int)$w['id'] ?>">
-      <label>Name <input name="wp_name[]" value="<?= h($w['name']) ?>"></label>
-      <label>ATK <input name="wp_atk[]" value="<?= h($w['atk']) ?>"></label>
-      <label>DMG <input name="wp_dmg[]" value="<?= h($w['dmg']) ?>"></label>
-      <label>Delete <input type="checkbox" name="wp_delete[]" value="<?= (int)$w['id'] ?>"></label>
-    </div>
-  <?php endforeach; ?>
-
-  <h2>Spells</h2>
-  <?php foreach ($spells as $s): ?>
-    <div style="border:1px solid #ccc; padding:8px; margin:6px 0;">
-      <input type="hidden" name="sp_id[]" value="<?= (int)$s['id'] ?>">
-      <label>UID <input name="sp_uid[]" value="<?= h($s['spell_uid']) ?>"></label>
-      <label>Name <input name="sp_name[]" value="<?= h($s['name']) ?>"></label>
-      <label>Kind
-        <select name="sp_kind[]">
-          <option value="spell" <?= (($s['kind'] ?? 'spell')==='spell')?'selected':'' ?>>spell</option>
-          <option value="cantrip" <?= (($s['kind'] ?? '')==='cantrip')?'selected':'' ?>>cantrip</option>
-        </select>
-      </label>
-      <label>Level <input name="sp_level[]" type="number" min="0" max="9" value="<?= (int)$s['level'] ?>"></label>
-      <label>Charges <input name="sp_charges[]" type="number" value="<?= (int)$s['charges'] ?>"></label>
-      <label>Used <input name="sp_used[]" type="checkbox" value="<?= (int)$s['id'] ?>" <?= !empty($s['used'])?'checked':'' ?>></label><br>
-      <label>Description<br><textarea name="sp_desc[]" rows="2"><?= h($s['description']) ?></textarea></label><br>
-      <label>Delete <input type="checkbox" name="sp_delete[]" value="<?= (int)$s['id'] ?>"></label>
-    </div>
-  <?php endforeach; ?>
-
-  <h2>Abilities</h2>
-  <?php foreach ($abilities as $a): ?>
-    <div style="border:1px solid #ccc; padding:8px; margin:6px 0;">
-      <input type="hidden" name="ab_id[]" value="<?= (int)$a['id'] ?>">
-      <label>Name <input name="ab_name[]" value="<?= h($a['name']) ?>"></label>
-      <label>Kind <input name="ab_kind[]" value="<?= h($a['kind']) ?>"></label>
-      <label>Source <input name="ab_source[]" value="<?= h($a['source']) ?>"></label><br>
-      <label>Description<br><textarea name="ab_desc[]" rows="2"><?= h($a['description']) ?></textarea></label><br>
-      <label>Delete <input type="checkbox" name="ab_delete[]" value="<?= (int)$a['id'] ?>"></label>
-    </div>
-  <?php endforeach; ?>
-
-  <?php if ($canEdit): ?>
-  <button type="submit">Save</button>
-<?php else: ?>
-  <p style="color:#b00020;">У вас є доступ лише на перегляд. Зверніться до адміна, щоб отримати право редагування.</p>
-<?php endif; ?>
-
 </form>
 
 </body>

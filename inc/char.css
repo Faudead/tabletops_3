@@ -1,0 +1,272 @@
+/* ================================
+   BASE
+================================ */
+
+:root {
+    --bg: #141418;
+    --panel: #1d1e24;
+    --panel-soft: #24252d;
+    --border: #2f313a;
+    --accent: #7c5cff;
+    --accent-soft: #9d85ff;
+    --text: #e6e6f0;
+    --muted: #9a9aa8;
+    --danger: #c94848;
+    --radius: 14px;
+  }
+  
+  * {
+    box-sizing: border-box;
+  }
+  
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    line-height: 1.4;
+  }
+  
+  h1,h2,h3 {
+    margin: 0 0 12px 0;
+    font-weight: 600;
+  }
+  
+  h2 {
+    font-size: 16px;
+    letter-spacing: .5px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  
+  a {
+    color: var(--accent-soft);
+    text-decoration: none;
+  }
+  
+  a:hover {
+    text-decoration: underline;
+  }
+  
+  /* ================================
+     TOPBAR
+  ================================ */
+  
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: linear-gradient(180deg, #1c1d23 0%, #181920 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .topbar .brand {
+    font-size: 18px;
+    font-weight: 600;
+  }
+  
+  .topbar .actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  
+  .badge {
+    background: #2b2c36;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  
+  /* ================================
+     LAYOUT
+  ================================ */
+  
+  .shell {
+    display: grid;
+    grid-template-columns: 280px 1fr 320px;
+    gap: 20px;
+    padding: 20px 24px 40px 24px;
+  }
+  
+  @media (max-width: 1100px) {
+    .shell {
+      grid-template-columns: 1fr;
+    }
+  }
+  
+  /* ================================
+     CARD
+  ================================ */
+  
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  
+  .cardBody {
+    margin-top: 12px;
+  }
+  
+  .collapsible h2 {
+    cursor: pointer;
+  }
+  
+  .collapsible.collapsed .cardBody {
+    display: none;
+  }
+  
+  /* ================================
+     FORM ELEMENTS
+  ================================ */
+  
+  label {
+    display: block;
+    margin-bottom: 10px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  
+  input,
+  select,
+  textarea {
+    width: 100%;
+    background: var(--panel-soft);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 10px;
+    color: var(--text);
+    margin-top: 4px;
+    font-size: 14px;
+  }
+  
+  input:focus,
+  select:focus,
+  textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  
+  textarea {
+    resize: vertical;
+  }
+  
+  .numSmall {
+    width: 80px;
+  }
+  
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 8px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  
+  button.secondary {
+    background: #2b2c36;
+  }
+  
+  button:hover {
+    opacity: .9;
+  }
+  
+  /* ================================
+     GRID HELPERS
+  ================================ */
+  
+  .grid2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  
+  .row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  
+  .row-inline {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  
+  /* ================================
+     STATS
+  ================================ */
+  
+  .statsGridCompact {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  
+  .statCell {
+    background: var(--panel-soft);
+    border-radius: 12px;
+    padding: 10px;
+    text-align: center;
+  }
+  
+  .statKey {
+    font-size: 12px;
+    color: var(--muted);
+    display: block;
+    margin-bottom: 6px;
+  }
+  
+  .statCell input {
+    text-align: center;
+  }
+  
+  .statMod {
+    display: block;
+    font-size: 11px;
+    margin-top: 4px;
+    color: var(--muted);
+  }
+  
+  /* ================================
+     COINS
+  ================================ */
+  
+  .coinsPanel {
+    background: var(--panel-soft);
+    border-radius: 12px;
+    padding: 12px;
+  }
+  
+  .coinsGrid {
+    display: flex;
+    gap: 12px;
+  }
+  
+  /* ================================
+     READ ONLY MODE
+  ================================ */
+  
+  form[aria-disabled="true"] {
+    opacity: .8;
+  }
+  
+  form[aria-disabled="true"] input,
+  form[aria-disabled="true"] select,
+  form[aria-disabled="true"] textarea {
+    background: #1a1b21;
+    color: #777;
+    cursor: not-allowed;
+  }
+  
