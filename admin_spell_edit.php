@@ -4,7 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/db.php';
 
-require_admin();
+$user = require_admin();
 $pdo = db();
 
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
@@ -133,6 +133,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   </style>
 </head>
 <body>
+<?php require_once __DIR__ . '/inc/nav.php'; ?>
+
 <h1>Admin: Spell <?= $id>0 ? "#$id" : "NEW" ?></h1>
 <?php if ($err): ?><p class="err"><?= htmlspecialchars($err) ?></p><?php endif; ?>
 

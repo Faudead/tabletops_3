@@ -4,7 +4,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/db.php';
 
-require_admin();
+$user = require_admin();
+
 
 $q      = trim((string)($_GET['q'] ?? ''));
 $level  = trim((string)($_GET['level'] ?? ''));
@@ -77,6 +78,8 @@ $schools = db()->query("SELECT DISTINCT school FROM spells WHERE school<>'' ORDE
   </style>
 </head>
 <body>
+<?php require_once __DIR__ . '/inc/nav.php'; ?>
+
 <h1>Адмін: Заклинання</h1>
 
 <p>

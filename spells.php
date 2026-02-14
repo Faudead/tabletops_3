@@ -4,7 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/db.php';
 
-require_login();
+$user = require_login();
 
 $q      = trim((string)($_GET['q'] ?? ''));
 $level  = trim((string)($_GET['level'] ?? ''));
@@ -89,7 +89,7 @@ $schools = db()->query("
   </style>
 </head>
 <body>
-
+<?php require_once __DIR__ . '/inc/nav.php'; ?>
 <h1>Заклинання</h1>
 
 <form method="get" class="row">
@@ -154,8 +154,6 @@ $schools = db()->query("
   </li>
 <?php endforeach; ?>
 </ul>
-
-<p><a href="/dashboard.php">← в кабінет</a></p>
 
 </body>
 </html>
