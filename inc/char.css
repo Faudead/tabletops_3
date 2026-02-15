@@ -346,3 +346,159 @@
 
 .skillName { color: var(--text); font-size: 14px; }
 .skillMeta { color: var(--muted); font-size: 12px; }
+
+/* ================================
+   MISSING UI STYLES (used in character.php)
+================================ */
+
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+
+.hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 14px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.btn.primary { background: var(--accent); color: #fff; }
+.btn.secondary { background: #2b2c36; color: var(--text); border-color: var(--border); }
+.btn.danger { background: var(--danger); color: #fff; }
+
+.btn:disabled,
+.smallBtn:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #2b2c36;
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.tabs button {
+  background: #2b2c36;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.tabs button.active {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+}
+
+.sectionTitle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.avatarBox {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.avatarPreview {
+  width: 92px;
+  height: 92px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--panel-soft);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.avatarPreview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.toast {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  background: #2b2c36;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 12px;
+  border-radius: 12px;
+  z-index: 999;
+  box-shadow: 0 10px 30px rgba(0,0,0,.35);
+}
+.collapsible .collapseToggle{
+  cursor:pointer;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+
+.collapsible .collapseToggle::after{
+  content:"▼";
+  font-size:12px;
+  opacity:.6;
+  transition:.2s;
+}
+
+.collapsible.open .collapseToggle::after{
+  transform:rotate(-180deg);
+}
+.collapsible .cardBody {
+  display: none;
+}
+
+.collapsible.open .cardBody {
+  display: block;
+}
+
+.collapseToggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+.avatarContainer {
+  width: 100%;
+  max-width: 280px;      /* обмеження по ширині */
+  border: 1px solid #ccc;
+  cursor: pointer;
+}
+
+.avatarContainer img {
+  width: 100%;
+  height: auto;          /* ключове */
+  display: block;
+}

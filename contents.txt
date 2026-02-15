@@ -1,5 +1,5 @@
 ROOT: "D:\Projects\games\site-fondry\tabletops_3"
-GENERATED: 2026-02-14 21:32:04
+GENERATED: 2026-02-15 09:34:49
 
 ====== CODE CONTENTS ======
 Included extensions: .bat .conf .css .env .htaccess .htm .html .ini .java .js .json .jsx .less .php .phtml .py .rb .sass .scss .sh .sql .ts .tsx .xml .yaml .yml
@@ -568,7 +568,7 @@ $schools = db()->query("SELECT DISTINCT school FROM spells WHERE school<>'' ORDE
 
 ======================================================================
 FILE: D:\Projects\games\site-fondry\tabletops_3\character.php
-MODIFIED: 2026-02-14 21:21:22 | SIZE: 41396 bytes
+MODIFIED: 2026-02-15 09:31:48 | SIZE: 49480 bytes
 ======================================================================
 
 <?php
@@ -622,6 +622,42 @@ $rs = db()->prepare("SELECT * FROM character_resources WHERE character_id=?");
 $rs->execute([$charId]);
 $res = $rs->fetch() ?: [];
 
+
+
+// Skills
+$skillsSt = db()->prepare("SELECT skill_code, proficiency_level, bonus_override
+                           FROM character_skills
+                           WHERE character_id=?");
+$skillsSt->execute([$charId]);
+$skillsRows = $skillsSt->fetchAll() ?: [];
+$skillsMap = [];
+foreach ($skillsRows as $r) {
+  $skillsMap[(string)$r['skill_code']] = [
+    'proficiency_level' => (int)($r['proficiency_level'] ?? 0),
+    'bonus_override' => ($r['bonus_override'] === null ? null : (int)$r['bonus_override']),
+  ];
+}
+
+// Proficiencies
+$profsSt = db()->prepare("SELECT prof_type, name
+                          FROM character_proficiencies
+                          WHERE character_id=?
+                          ORDER BY prof_type, name");
+$profsSt->execute([$charId]);
+$profsRows = $profsSt->fetchAll() ?: [];
+$profs = [
+  'weapons' => [],
+  'armor' => [],
+  'tools' => [],
+  'languages' => [],
+  'vehicles' => [],
+];
+foreach ($profsRows as $r) {
+  $type = (string)($r['prof_type'] ?? '');
+  $name = trim((string)($r['name'] ?? ''));
+  if ($name === '' || !isset($profs[$type])) continue;
+  $profs[$type][] = $name;
+}
 $cc = db()->prepare("SELECT * FROM character_coins WHERE character_id=?");
 $cc->execute([$charId]);
 $coins = $cc->fetch() ?: [];
@@ -655,6 +691,34 @@ if ($role === 'admin') {
   $shared = $st2->fetchAll();
 }
 
+// notes / personality (optional table)
+$notes = [
+  'session_notes' => '',
+  'quick_notes'   => '',
+  'traits'        => '',
+  'ideals'        => '',
+  'bonds'         => '',
+  'flaws'         => '',
+  'backstory'     => '',
+];
+try {
+  $nt = db()->prepare("
+    SELECT session_notes, quick_notes, traits, ideals, bonds, flaws, backstory
+    FROM character_notes
+    WHERE character_id=?
+    LIMIT 1
+  ");
+  $nt->execute([$charId]);
+  $row = $nt->fetch();
+  if ($row) {
+    foreach ($notes as $k => $_) {
+      if (array_key_exists($k, $row) && $row[$k] !== null) $notes[$k] = (string)$row[$k];
+    }
+  }
+} catch (Throwable $e) {
+  // Якщо таблиці/колонок ще нема — просто не роняємо сторінку.
+}
+
 function h($v): string { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); }
 function stat_mod(int $score): int { return (int)floor(($score - 10) / 2); }
 function fmt_mod(int $m): string { return ($m >= 0 ? '+' : '') . (string)$m; }
@@ -663,24 +727,11 @@ $pb = (int)($res['proficiency_bonus'] ?? 2);
 
 // avatar src
 $avatarSrc = '';
-$avatarData = trim((string)($ch['avatar_data'] ?? ''));
-$avatarUrl  = trim((string)($ch['avatar_url'] ?? ''));
-
-if ($avatarData !== '') {
-  // if already contains data:... keep it, else assume base64 png
-  $avatarSrc = (str_starts_with($avatarData, 'data:'))
-    ? $avatarData
-    : ('data:image/png;base64,' . $avatarData);
-} elseif ($avatarUrl !== '') {
-  $avatarSrc = $avatarUrl;
+if (!empty($ch['avatar_data'])) {
+  $avatarSrc = (string)$ch['avatar_data'];
+} elseif (!empty($ch['avatar_url'])) {
+  $avatarSrc = (string)$ch['avatar_url'];
 }
-
-// display strings like in reference
-$displayName = (string)($ch['name'] ?? '—');
-$displayClass = trim((string)($ch['class_name'] ?? ''));
-$displayLevel = (int)($ch['level'] ?? 1);
-$displayRace  = trim((string)($ch['race'] ?? ''));
-$classLevelDisplay = trim(($displayClass !== '' ? $displayClass : '—') . ' • L' . $displayLevel . ($displayRace !== '' ? (' • ' . $displayRace) : ''));
 
 ?>
 <!doctype html>
@@ -688,746 +739,1104 @@ $classLevelDisplay = trim(($displayClass !== '' ? $displayClass : '—') . ' •
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <link rel="stylesheet" href="/inc/char.css">
-  <title><?= h($ch['name']) ?></title>
+  <title><?= h($ch['name'] ?? 'Character') ?></title>
+  <link rel="stylesheet" href="/inc/char.css?v=1">
+  <style>
+    /* Extra styles for character.php on top of /inc/char.css */
+    /* Keep 3 columns; DO NOT HIDE the right column (char.css stacks at <1100px; that's fine). */
+    .shell{ grid-template-columns: 280px 1fr 320px; }
+
+    /* Legacy .btn support (file uses .btn classes) */
+    .btn{
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn.secondary{ background: #2b2c36; }
+    .btn.danger{ background: var(--danger); }
+    .btn[disabled]{ opacity:.65; cursor:not-allowed; }
+
+    /* Avatar preview */
+    .avatarPreview{
+      width: 96px;
+      height: 96px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      background: var(--panel-soft);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+    .avatarPreview img{ width:100%; height:100%; object-fit:cover; display:block; }
+    .avatarBox{ display:flex; gap: 12px; align-items:flex-start; }
+
+    /* Tabs */
+    .tabs{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom: 12px; }
+    .tabs button{
+      background: #2b2c36;
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .tabs button.active{
+      background: rgba(124, 92, 255, .25);
+      border-color: rgba(124, 92, 255, .45);
+    }
+/* Small UI helpers used by the file */
+    .muted{ color: var(--muted); }
+    .hint{ font-size: 12px; color: var(--muted); margin-top: 8px; }
+    .pill{ background: #2b2c36; padding: 6px 10px; border-radius: 999px; font-size: 12px; color: var(--muted); display:inline-block; }
+
+    .list{ display:flex; flex-direction:column; gap:10px; }
+    .item{ background: var(--panel-soft); border:1px solid var(--border); border-radius: 12px; padding: 10px; }
+    .itemHead{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
+
+    .toast{
+      position: fixed;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      background: rgba(20,20,24,.92);
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      border-radius: 12px;
+      color: var(--text);
+      z-index: 9999;
+      display:none;
+    }
+    .toast.show{ display:block; }
+  </style>
 </head>
 <body>
-<?php require_once __DIR__ . '/inc/nav.php'; ?>
 
-<!-- ===== TOPBAR (reference-like) ===== -->
 <header class="topbar">
-  <div class="brand">Char Sheet</div>
-  <div class="actions">
-    <input
-      id="saveMessage"
-      name="save_message"
-      form="charForm"
-      placeholder="Коментар до збереження (напр. Session 1 / Level up)"
-      <?= $canEdit ? '' : 'disabled' ?>
-    />
+<div class="brand">
+      <a class="btn secondary" href="/characters.php">← Назад</a>
+      <div>
+        <div style="font-size:18px; font-weight:700; line-height:1.1;"><?= h($ch['name']) ?></div>
+        <div class="muted small">
+          <span class="pill"><?= h($ch['race'] ?? '') ?></span>
+          <span class="pill"><?= h($ch['class_name'] ?? '') ?> <?= (int)($ch['level'] ?? 1) ?></span>
+          <?php if ($canEdit): ?>
+            <span class="pill">Можна редагувати</span>
+          <?php else: ?>
+            <span class="pill">Лише перегляд</span>
+          <?php endif; ?>
+        </div>
+      </div>
+    </div>
 
-    <?php if ($canEdit): ?>
-      <button type="submit" form="charForm">Save</button>
-    <?php else: ?>
-      <span class="badge">read-only</span>
-    <?php endif; ?>
-
-    <a href="/characters.php"><button type="button" class="secondary">← back</button></a>
-  </div>
+    <div class="actions">
+      <button class="btn primary" id="btnSave" <?= $canEdit ? '' : 'disabled' ?>>Save</button>
+      <button class="btn secondary" id="btnExport">Export JSON</button>
+    </div>
 </header>
 
-<?php if ($role === 'admin'): ?>
-  <section class="card" style="margin:12px 24px 0 24px;">
-    <h2>Доступ до чарника</h2>
-
-    <form method="post" action="/api/character_share.php" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
-      <input type="hidden" name="character_id" value="<?= (int)$charId ?>">
-
-      <label>
-        Username кому видати
-        <input name="username" placeholder="наприклад: nika" required>
-      </label>
-
-      <label style="display:flex; gap:6px; align-items:center; margin-bottom:6px;">
-        <input type="checkbox" name="can_edit" value="1">
-        може редагувати
-      </label>
-
-      <button type="submit">Видати/оновити доступ</button>
-    </form>
-
-    <?php if (!empty($shared)): ?>
-      <h3 style="margin-top:12px;">Вже мають доступ</h3>
-      <ul>
-        <?php foreach ($shared as $s): ?>
-          <li style="margin:6px 0;">
-            <b><?= h($s['username']) ?></b>
-            — <?= ((int)$s['can_edit']===1) ? 'edit' : 'view' ?>
-
-            <form method="post" action="/api/character_unshare.php" style="display:inline;">
-              <input type="hidden" name="character_id" value="<?= (int)$charId ?>">
-              <input type="hidden" name="user_id" value="<?= (int)$s['user_id'] ?>">
-              <button type="submit" onclick="return confirm('Забрати доступ у <?= h($s['username']) ?>?')">забрати</button>
-            </form>
-          </li>
-        <?php endforeach; ?>
-      </ul>
-    <?php else: ?>
-      <p style="opacity:.75; margin-top:10px;">Поки нікому не видано доступ.</p>
-    <?php endif; ?>
-  </section>
-<?php endif; ?>
-
-<form id="charForm" method="post" action="/api/character_save.php?id=<?= (int)$charId ?>" <?= $canEdit ? '' : 'aria-disabled="true"' ?>>
+<form id="charForm" method="post" action="/api/character_save.php">
+  <input type="hidden" name="id" value="<?= (int)$charId ?>">
 
   <main class="shell">
 
-    <!-- LEFT (reference-like: avatar + notes + history) -->
     <aside class="sidebar-left">
-
       <section class="card">
-        <div class="profile" style="display:flex; gap:12px; align-items:center;">
-          <div class="avatarWrap" id="avatarDrop" title="Клік — завантажити. Ctrl+V — вставити." style="width:86px; height:86px; border-radius:16px; border:1px dashed var(--border); position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center; background:var(--panel-soft); cursor:pointer;">
-            <img
-              alt="avatar"
-              class="avatar"
-              id="avatarImg"
-              src="<?= h($avatarSrc) ?>"
-              style="<?= $avatarSrc !== '' ? '' : 'display:none;' ?> width:100%; height:100%; object-fit:cover;"
-            />
-            <div class="avatarFallback" id="avatarFallback" style="<?= $avatarSrc === '' ? '' : 'display:none;' ?> text-align:center; padding:10px;">
-              <div class="avatarHint">
-                <div class="avatarHintTitle" style="font-weight:600; color:var(--text);">Avatar</div>
-                <div class="avatarHintSub" style="font-size:12px; color:var(--muted); margin-top:4px;">Click to upload • Ctrl+V to paste</div>
-              </div>
-            </div>
+  <h2>Avatar</h2>
+  <div class="avatarBox" style="margin-bottom:10px; display:flex; align-items:center;">
+  <div style="margin-right:16px;">
+  <div id="avatarContainer" style="width:128px;height:128px;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid #ccc;cursor:pointer;">
+  <img
+    id="avatarPreview"
+    src="<?= $avatarSrc ? h($avatarSrc) : 'https://via.placeholder.com/128?text=No+avatar' ?>"
+    alt="avatar"
+    style="max-width:100%;max-height:100%;width:auto;height:auto;display:block;"
+    tabindex="0"
+      <?= $canEdit ? '' : 'aria-disabled="true"' ?>
+      title="<?= $canEdit ? 'Click or paste image to change avatar' : 'Editing disabled' ?>"
+    >
+  </div>
+<script>
+const avatarImg = document.getElementById('avatarPreview');
+const avatarContainer = document.getElementById('avatarContainer');
 
-            <input accept="image/*" class="avatarFileHidden" id="avatarFile" type="file" style="display:none"/>
-          </div>
+function adjustContainer() {
+  if (!avatarImg.naturalWidth || !avatarImg.naturalHeight) return;
+  if (avatarImg.naturalWidth === avatarImg.naturalHeight) {
+    avatarContainer.style.width = '128px';
+    avatarContainer.style.height = '128px';
+  } else if (avatarImg.naturalWidth > avatarImg.naturalHeight) {
+    avatarContainer.style.width = '128px';
+    avatarContainer.style.height = Math.round(128 * avatarImg.naturalHeight / avatarImg.naturalWidth) + 'px';
+  } else {
+    avatarContainer.style.height = '128px';
+    avatarContainer.style.width = Math.round(128 * avatarImg.naturalWidth / avatarImg.naturalHeight) + 'px';
+  }
+}
+avatarImg.addEventListener('load', adjustContainer);
+if (avatarImg.complete) adjustContainer();
+</script>
+    <input type="file" id="avatarFile" accept="image/*" style="display:none" <?= $canEdit ? '' : 'disabled' ?>>
+    <input type="hidden" name="avatar_data" id="avatarData" value="<?= h($ch['avatar_data']) ?>">
+  </div>
+  </div>
+</div>
+<script>
+const canEdit = <?= $canEdit ? 'true' : 'false' ?>;
+const avatarImg = document.getElementById('avatarPreview');
+const avatarInput = document.getElementById('avatarFile');
+const avatarData = document.getElementById('avatarData');
+const btnClear = document.getElementById('btnClearAvatar');
 
-          <div class="profile-text" style="min-width:0;">
-            <div class="name" id="nameDisplay" style="font-size:16px; font-weight:600;"><?= h($displayName) ?></div>
-            <div class="sub" id="classLevelDisplay" style="font-size:13px; color:var(--muted); margin-top:4px;"><?= h($classLevelDisplay) ?></div>
-          </div>
-        </div>
+// Клік по аватару відкриває вибір файлу
+if (canEdit) {
+  avatarImg.addEventListener('click', () => avatarInput.click());
+  avatarImg.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') avatarInput.click();
+  });
 
-        <!-- store avatar fields for API -->
-        <input type="hidden" name="avatar_url" id="avatarUrlHidden" value="<?= h($avatarUrl) ?>">
-        <input type="hidden" name="avatar_data" id="avatarDataHidden" value="<?= h($avatarData) ?>">
+  // Оновлення прев’ю після вибору файлу
+  avatarInput.addEventListener('change', e => {
+    if (e.target.files && e.target.files[0]) {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        avatarImg.src = ev.target.result;
+        avatarData.value = ev.target.result;
+      };
+      reader.readAsDataURL(e.target.files[0]);
+    }
+  });
 
-        <!-- URL block only when no avatar -->
-        <div id="avatarUrlBlock" style="<?= ($avatarSrc === '') ? '' : 'display:none;' ?> margin-top:12px;">
-          <label>Avatar URL / local path
-            <input id="avatarUrl" placeholder="https://... або /assets/avatars/flor.png" value="<?= h($avatarUrl) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-          </label>
-          <div class="hint" style="font-size:12px; color:var(--muted);">Якщо вставиш URL — воно підтягнеться. Найнадійніше: клік по аватару або Ctrl+V.</div>
-        </div>
+  // Вставка зображення з буфера обміну
+  avatarImg.addEventListener('paste', e => {
+    const items = (e.clipboardData || window.clipboardData).items;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const file = items[i].getAsFile();
+        const reader = new FileReader();
+        reader.onload = ev => {
+          avatarImg.src = ev.target.result;
+          avatarData.value = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  });
 
-        <div class="hint" style="font-size:12px; color:var(--muted); margin-top:10px;">
-          Зображення можна зберігати всередині БД як data (base64). Не вантаж гігантські файли 🙂
-        </div>
-      </section>
+  // Очищення аватара
+  btnClear.addEventListener('click', () => {
+    avatarImg.src = 'https://via.placeholder.com/128?text=No+avatar';
+    avatarData.value = '';
+    document.getElementById('avatarUrl').value = '';
+    avatarInput.value = '';
+  });
+}
+</script>
+</section>
 
-      <section class="card">
-        <h2>Notes</h2>
-        <label>Session notes
-          <textarea id="sessionNotes" name="session_notes" rows="12" <?= $canEdit ? '' : 'disabled' ?>></textarea>
-        </label>
-        <label>Quick notes
-          <textarea id="quickNotes" name="quick_notes" placeholder="Коротко: що зараз відбувається, цілі, ініціатива..." rows="8" <?= $canEdit ? '' : 'disabled' ?>></textarea>
-        </label>
-      </section>
+      <section class="card" style="margin-top: 12px;">
+            <h2>Notes</h2>
+            <label>Session notes
+              <textarea id="sessionNotes" name="session_notes" rows="12" <?= $canEdit ? '' : 'disabled' ?>><?= h($notes["session_notes"] ?? "") ?></textarea>
+            </label>
+            <label>Quick notes
+              <textarea id="quickNotes" name="quick_notes" placeholder="Коротко: що зараз відбувається, цілі, ініціатива..." rows="8" <?= $canEdit ? '' : 'disabled' ?>><?= h($notes["quick_notes"] ?? "") ?></textarea>
+            </label>
+          </section>
 
       <section class="card" hidden id="historyPanel">
-        <h2>History</h2>
-        <div class="hint" style="font-size:12px; color:var(--muted);">Поки що плейсхолдер під історію збережень.</div>
-        <button class="secondary" type="button" id="btnRefreshHistory" disabled>Refresh</button>
-        <div id="historyList"></div>
-      </section>
-
+            <h2>History</h2>
+            <div class="hint" style="font-size:12px; color:var(--muted);">Поки що плейсхолдер під історію збережень.</div>
+            <button class="secondary" type="button" id="btnRefreshHistory" disabled>Refresh</button>
+            <div id="historyList"></div>
+          </section>
     </aside>
 
-    <!-- MAIN (reference-like) -->
     <section class="main">
+      <section class="card">
+<div class="tabs">
+          <button type="button" class="active" data-tab="sheet">Sheet</button>
+          <button type="button" data-tab="weapons">Weapons</button>
+          <button type="button" data-tab="inventory">Inventory</button>
+          <button type="button" data-tab="spells">Spells</button>
+          <button type="button" data-tab="abilities">Abilities</button>
+        </div>
 
-      <!-- TOP GRID (Stats + Saves + Weapons) -->
-      <section class="topGrid" id="topStatsBlock" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:16px; margin-bottom:16px;">
-        <!-- STATS -->
-        <section class="card compactCard" id="statsCard">
-          <h2>Stats</h2>
+        <!-- TAB: SHEET -->
+        <section data-panel="sheet">
 
-          <div class="statsMetaRow" style="display:flex; gap:10px; margin-bottom:10px;">
-            <label class="metaBox" style="margin:0;">
-              <span class="metaLabel" style="display:block; font-size:12px; color:var(--muted);">PB</span>
-              <input class="numSmall" id="profBonus" name="proficiency_bonus" type="number" value="<?= $pb ?>" <?= $canEdit ? '' : 'disabled' ?> />
-            </label>
-            <label class="metaBox" style="margin:0;">
-              <span class="metaLabel" style="display:block; font-size:12px; color:var(--muted);">Inspiration</span>
-              <input class="numSmall" id="inspiration" type="number" value="<?= !empty($res['inspiration']) ? 1 : 0 ?>" disabled />
-            </label>
-          </div>
+          <div class="grid2">
 
-          <h2>Base stats</h2>
-
-          <div class="statsGridCompact">
-            <?php
-              $map = ['str'=>'STR','dex'=>'DEX','con'=>'CON','int'=>'INT','wis'=>'WIS','cha'=>'CHA'];
-              foreach ($map as $k=>$label):
-                $score = (int)($stats["{$k}_score"] ?? 10);
-                $mod = stat_mod($score);
-            ?>
-              <div class="statCell">
-                <span class="statKey"><?= $label ?></span>
-                <input id="stat<?= $label ?>" name="<?= $k ?>_score" type="number" value="<?= $score ?>" <?= $canEdit ? '' : 'disabled' ?> />
-                <span class="statMod" id="mod<?= $label ?>"><?= h(fmt_mod($mod)) ?></span>
+            <section class="card" style="padding:12px;">
+              <h2>Stats</h2>
+              <div class="grid2">
+                <?php
+                  $statKeys = ['str'=>'STR','dex'=>'DEX','con'=>'CON','int'=>'INT','wis'=>'WIS','cha'=>'CHA'];
+                  foreach ($statKeys as $k => $label):
+                    $score = (int)($stats[$k] ?? 10);
+                    $mod = stat_mod($score);
+                ?>
+                  <div class="item">
+                    <div class="itemHead">
+                      <div><b><?= $label ?></b></div>
+                      <div class="pill"><?= fmt_mod($mod) ?></div>
+                    </div>
+                    <label>Score
+                      <input type="number" min="1" max="30" name="stat_<?= $k ?>" value="<?= $score ?>" <?= $canEdit ? '' : 'disabled' ?>>
+                    </label>
+                  </div>
+                <?php endforeach; ?>
               </div>
-            <?php endforeach; ?>
-          </div>
+            </section>
 
-          <h2>Vitals</h2>
-          <div class="grid2">
-            <label>HP <input class="numSmall" id="hpCurrent" name="hp_current" type="number" value="<?= (int)($res['hp_current'] ?? 10) ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
-            <label>Max <input class="numSmall" id="hpMax" name="hp_max" type="number" value="<?= (int)($res['hp_max'] ?? 10) ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
-            <label>Temp <input class="numSmall" id="hpTemp" name="hp_temp" type="number" value="<?= (int)($res['hp_temp'] ?? 0) ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
-            <label>AC <input class="numSmall" id="ac" name="ac" type="number" value="<?= (int)($res['ac'] ?? 10) ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
-          </div>
+            <section class="card" style="padding:12px;">
+              <h2>Resources</h2>
 
-          <div class="grid2">
-            <label class="ppBox">Passive Perception
-              <div class="ppInner" style="display:flex; gap:10px; align-items:center; margin-top:6px;">
-                <input class="numSmall" id="passivePerception" type="number" value="<?= (int)($res['passive_perception_override'] ?? 0) ?>" disabled />
-                <label class="ppAuto" style="display:flex; gap:6px; align-items:center; margin:0; color:var(--muted);">
-                  <input id="ppAuto" type="checkbox" disabled />
-                  <span>Auto (10 + Perception)</span>
+              <div class="grid2">
+                <label>HP max
+                  <input type="number" min="0" name="hp_max" value="<?= (int)($res['hp_max'] ?? 0) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+                </label>
+                <label>HP current
+                  <input type="number" min="0" name="hp_current" value="<?= (int)($res['hp_current'] ?? 0) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+                </label>
+
+                <label>Temp HP
+                  <input type="number" min="0" name="temp_hp" value="<?= (int)($res['temp_hp'] ?? 0) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+                </label>
+                <label>AC
+                  <input type="number" min="0" name="ac" value="<?= (int)($res['ac'] ?? 0) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+                </label>
+
+                <label>Speed
+                  <input type="number" min="0" name="speed" value="<?= (int)($res['speed'] ?? 0) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+                </label>
+                <label>Initiative
+                  <input type="number" name="initiative" value="<?= (int)($res['initiative'] ?? 0) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+                </label>
+
+                <label>Passive Perception (override)
+                  <input type="number" id="passivePerception" value="<?= (int)($res['passive_perception'] ?? 10) ?>" disabled>
+                  <input type="hidden" name="passive_perception" value="<?= (int)($res['passive_perception'] ?? 10) ?>">
+                </label>
+
+                <label>Auto passive perception
+                  <input type="checkbox" id="autoPassivePerception" checked disabled>
                 </label>
               </div>
-              <input name="passive_perception_override" value="<?= h($res['passive_perception_override'] ?? '') ?>" style="display:none;">
-            </label>
-          </div>
 
-        </section>
+              <hr style="border:0;border-top:1px solid rgba(255,255,255,.10); margin: 12px 0;">
 
-        <!-- SAVES -->
-        <section class="card compactCard" id="savesCard">
-          <h2>Saves</h2>
-          <div class="hint" style="font-size:12px; color:var(--muted); margin-bottom:10px;">Save = stat mod + (PB якщо proficient).</div>
-
-          <div class="savesGrid" id="savesGrid" style="display:grid; grid-template-columns: 1fr; gap:8px;">
-            <?php
-              foreach ($map as $k=>$label):
-                $score = (int)($stats["{$k}_score"] ?? 10);
-                $mod = stat_mod($score);
-                $isProf = !empty($stats["save_{$k}"]);
-                $total = $mod + ($isProf ? $pb : 0);
-            ?>
-              <div class="saveRow" style="display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--panel-soft); border:1px solid var(--border); border-radius:12px; padding:10px;">
-                <div style="display:flex; align-items:center; gap:10px;">
-                  <b style="min-width:44px;"><?= $label ?></b>
-                  <span style="font-size:12px; color:var(--muted);">mod <?= h(fmt_mod($mod)) ?></span>
-                </div>
-
-                <div style="display:flex; align-items:center; gap:10px;">
-                  <label class="row-inline" style="margin:0; color:var(--muted);">
-                    <input type="checkbox" name="save_<?= $k ?>" value="1" <?= $isProf ? 'checked' : '' ?> <?= $canEdit ? '' : 'disabled' ?>>
-                    proficient
-                  </label>
-                  <span class="badge" title="total"><?= h(fmt_mod($total)) ?></span>
-                </div>
-              </div>
-            <?php endforeach; ?>
-          </div>
-
-          <div class="deathSaves" style="margin-top:14px; opacity:.7;">
-            <div class="deathHeader" style="font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px;">Death Saves</div>
-            <div style="font-size:12px; color:var(--muted);">Плейсхолдер (додамо пізніше, коли заведемо поля).</div>
-          </div>
-        </section>
-
-        <!-- WEAPONS -->
-        <section class="card compactCard" id="weaponsCard">
-          <h2>Weapons</h2>
-          <div class="cardBody">
-            <div class="table">
-              <div class="trow thead inv-head weapons-head" style="display:grid; grid-template-columns: 1.4fr .7fr .9fr .4fr; gap:10px; font-size:12px; color:var(--muted); padding:8px 0;">
-                <div>Назва</div><div>Бонус АТК</div><div>Шкода/тип</div><div></div>
+              <h2>Coins</h2>
+              <div class="grid2">
+                <label>CP <input type="number" min="0" name="coin_cp" value="<?= (int)($coins['cp'] ?? 0) ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
+                <label>SP <input type="number" min="0" name="coin_sp" value="<?= (int)($coins['sp'] ?? 0) ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
+                <label>EP <input type="number" min="0" name="coin_ep" value="<?= (int)($coins['ep'] ?? 0) ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
+                <label>GP <input type="number" min="0" name="coin_gp" value="<?= (int)($coins['gp'] ?? 0) ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
+                <label>PP <input type="number" min="0" name="coin_pp" value="<?= (int)($coins['pp'] ?? 0) ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
               </div>
 
-              <div id="weaponsTable">
+            </section>
+            <section class="card" data-collapse="skills">
+                <div class="collapseToggle">
+                <h2 style="margin:0;">Skills</h2>
+                <span class="muted">toggle</span>
+                </div>
+                <div class="cardBody">
+                <div class="hint">Total = stat mod + PB (якщо proficient).</div>
+                <div id="skillsList"></div>
+                </div>
+            </section>
+          </div>
+
+          
+
+
+</section>
+
+                
+
+
+
+<!-- TAB: WEAPONS -->
+        <section data-panel="weapons" hidden>
+          <div class="grid2">
+            <section class="card">
+              <h2>Weapons</h2>
+              <div class="sectionTitle">
+                <div class="muted small"><?= count($weapons) ?> items</div>
+                <button class="btn secondary" type="button" id="btnAddWeapon" <?= $canEdit ? '' : 'disabled' ?>>+ Add</button>
+              </div>
+              <div id="weaponList" class="list">
                 <?php foreach ($weapons as $w): ?>
-                  <div class="trow" style="display:grid; grid-template-columns: 1.4fr .7fr .9fr .4fr; gap:10px; align-items:center; padding:10px 0; border-top:1px solid var(--border);">
-                    <input type="hidden" name="wp_id[]" value="<?= (int)$w['id'] ?>">
-                    <input name="wp_name[]" value="<?= h($w['name']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-                    <input name="wp_atk[]" value="<?= h($w['atk']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-                    <input name="wp_dmg[]" value="<?= h($w['dmg']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-
-                    <label class="row-inline" style="margin:0; justify-content:flex-end;">
-                      <input type="checkbox" name="wp_delete[]" value="<?= (int)$w['id'] ?>" <?= $canEdit ? '' : 'disabled' ?>>
-                      <span style="font-size:12px; color:var(--muted);">Del</span>
-                    </label>
-                  </div>
-                <?php endforeach; ?>
-              </div>
-            </div>
-
-            <div class="row" style="margin-top:10px;">
-              <button type="button" id="addWeapon" class="secondary" <?= $canEdit ? '' : 'disabled' ?>>+ Add weapon</button>
-            </div>
-          </div>
-        </section>
-      </section>
-
-      <!-- TWO COL GRID: Skills + Spells/Abilities -->
-      <section class="twoColGrid" style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-bottom:16px;">
-        <section class="card collapsible compactCard" data-collapse="skills">
-          <h2>Skills</h2>
-          <div class="cardBody">
-            <div class="hint" style="font-size:12px; color:var(--muted);">Тут буде блок скілів як у референсі (поки плейсхолдер).</div>
-            <div id="skillsList"></div>
-          </div>
-        </section>
-
-        <section class="card collapsible compactCard" data-collapse="spells">
-          <h2 style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
-            <span>Spells</span>
-            <span class="segToggle" id="spellsModeToggle" style="display:flex; gap:6px;">
-              <button type="button" class="segBtn secondary" data-mode="spells">Заклинання</button>
-              <button type="button" class="segBtn secondary" data-mode="abilities">Вміння</button>
-            </span>
-          </h2>
-
-          <div class="cardBody">
-            <div id="spellsPane">
-              <div class="row"><button type="button" id="addSpell" class="secondary" <?= $canEdit ? '' : 'disabled' ?>>+ Add spell</button></div>
-              <div id="spellsHud"></div>
-
-              <div class="hint" style="margin-top:10px; font-size:12px; color:var(--muted);">Редактор заклинань (поки як список).</div>
-
-              <div id="spellsEditor">
-                <?php foreach ($spells as $s): ?>
-                  <div class="card" style="box-shadow:none; margin:10px 0; border:1px solid var(--border);">
-                    <input type="hidden" name="sp_id[]" value="<?= (int)$s['id'] ?>">
-
+                  <div class="item weaponItem" data-id="<?= (int)$w['id'] ?>">
+                    <div class="itemHead">
+                      <div><b><?= h($w['name'] ?? 'Weapon') ?></b></div>
+                      <button type="button" class="btn danger btnRemoveWeapon" <?= $canEdit ? '' : 'disabled' ?>>Remove</button>
+                    </div>
                     <div class="grid2">
-                      <label>UID <input name="sp_uid[]" value="<?= h($s['spell_uid']) ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
-                      <label>Name <input name="sp_name[]" value="<?= h($s['name']) ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
+                      <label>Name <input name="weapon_name[]" value="<?= h($w['name'] ?? '') ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
+                      <label>Attack bonus <input name="weapon_attack_bonus[]" value="<?= h($w['attack_bonus'] ?? '') ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
+                      <label>Damage <input name="weapon_damage[]" value="<?= h($w['damage'] ?? '') ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
+                      <label>Type <input name="weapon_type[]" value="<?= h($w['type'] ?? '') ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
+                      <label>Notes <input name="weapon_notes[]" value="<?= h($w['notes'] ?? '') ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
+                      <input type="hidden" name="weapon_id[]" value="<?= (int)$w['id'] ?>">
+                      <input type="hidden" name="weapon_sort[]" value="<?= (int)$w['sort_order'] ?>">
                     </div>
-
-                    <div class="row">
-                      <label style="min-width:160px;">Kind
-                        <select name="sp_kind[]" <?= $canEdit ? '' : 'disabled' ?>>
-                          <option value="spell" <?= (($s['kind'] ?? 'spell')==='spell')?'selected':'' ?>>spell</option>
-                          <option value="cantrip" <?= (($s['kind'] ?? '')==='cantrip')?'selected':'' ?>>cantrip</option>
-                        </select>
-                      </label>
-
-                      <label>Level <input class="numSmall" name="sp_level[]" type="number" min="0" max="9" value="<?= (int)$s['level'] ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
-                      <label>Charges <input class="numSmall" name="sp_charges[]" type="number" value="<?= (int)$s['charges'] ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
-
-                      <label class="row-inline" style="margin:0;">
-                        <input name="sp_used[]" type="checkbox" value="<?= (int)$s['id'] ?>" <?= !empty($s['used'])?'checked':'' ?> <?= $canEdit ? '' : 'disabled' ?>>
-                        Used
-                      </label>
-                    </div>
-
-                    <label>Description
-                      <textarea name="sp_desc[]" rows="2" <?= $canEdit ? '' : 'disabled' ?>><?= h($s['description']) ?></textarea>
-                    </label>
-
-                    <label class="row-inline" style="margin:0;">
-                      <input type="checkbox" name="sp_delete[]" value="<?= (int)$s['id'] ?>" <?= $canEdit ? '' : 'disabled' ?>>
-                      Delete
-                    </label>
                   </div>
                 <?php endforeach; ?>
               </div>
-            </div>
-
-            <div id="abilitiesPane" class="isHidden" style="display:none;">
-              <div class="row"><button type="button" id="addAbility" class="secondary" <?= $canEdit ? '' : 'disabled' ?>>+ Add ability</button></div>
-              <div id="abilitiesHud"></div>
-
-              <div class="hint" style="margin-top:10px; font-size:12px; color:var(--muted);">Редактор вмінь/особливостей (поки як список).</div>
-
-              <div id="abilitiesEditor">
-                <?php foreach ($abilities as $a): ?>
-                  <div class="card" style="box-shadow:none; margin:10px 0; border:1px solid var(--border);">
-                    <input type="hidden" name="ab_id[]" value="<?= (int)$a['id'] ?>">
-
-                    <label>Name <input name="ab_name[]" value="<?= h($a['name']) ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
-
-                    <div class="grid2">
-                      <label>Kind <input name="ab_kind[]" value="<?= h($a['kind']) ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
-                      <label>Source <input name="ab_source[]" value="<?= h($a['source']) ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
-                    </div>
-
-                    <label>Description
-                      <textarea name="ab_desc[]" rows="2" <?= $canEdit ? '' : 'disabled' ?>><?= h($a['description']) ?></textarea>
-                    </label>
-
-                    <label class="row-inline" style="margin:0;">
-                      <input type="checkbox" name="ab_delete[]" value="<?= (int)$a['id'] ?>" <?= $canEdit ? '' : 'disabled' ?>>
-                      Delete
-                    </label>
-                  </div>
-                <?php endforeach; ?>
-              </div>
-            </div>
-
+            </section>
           </div>
         </section>
-      </section>
-
-      <!-- INVENTORY (reference-like header/table) -->
-      <section class="card collapsible" data-collapse="inventory">
-        <h2>Inventory (simplified)</h2>
-        <div class="cardBody">
-
-          <div class="row">
-            <button type="button" id="addItem" class="secondary" <?= $canEdit ? '' : 'disabled' ?>>+ Add item</button>
           </div>
+        </section>
 
-          <div class="coinsPanel" style="margin-top:12px;">
-            <div class="coinsGrid" style="display:flex; gap:12px; flex-wrap:wrap;">
-              <label>GP <input class="numSmall" id="coinGP" name="gp" min="0" type="number" value="<?= (int)($coins['gp'] ?? 0) ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
-              <label>SP <input class="numSmall" id="coinSP" name="sp" min="0" type="number" value="<?= (int)($coins['sp'] ?? 0) ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
-              <label>CP <input class="numSmall" id="coinCP" name="cp" min="0" type="number" value="<?= (int)($coins['cp'] ?? 0) ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
+        <!-- TAB: INVENTORY -->
+
+        <section data-panel="inventory" hidden>
+          <section class="card">
+            <div class="sectionTitle">
+              <h2 style="margin:0;">Inventory</h2>
+              <button class="btn secondary" type="button" id="btnAddItem" <?= $canEdit ? '' : 'disabled' ?>>+ Add</button>
             </div>
+            <div id="invList" class="list">
+              <?php foreach ($inventory as $it): ?>
+                <div class="item invItem" data-id="<?= (int)$it['id'] ?>">
+                  <div class="itemHead">
+                    <div><b><?= h($it['name'] ?? 'Item') ?></b></div>
+                    <button type="button" class="btn danger btnRemoveItem" <?= $canEdit ? '' : 'disabled' ?>>Remove</button>
+                  </div>
+                  <div class="grid2">
+                    <label>Name <input name="item_name[]" value="<?= h($it['name'] ?? '') ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
+                    <label>Qty <input type="number" min="0" name="item_qty[]" value="<?= (int)($it['qty'] ?? 1) ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
+                    <label>Weight <input name="item_weight[]" value="<?= h($it['weight'] ?? '') ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
+                    <label>Notes <input name="item_notes[]" value="<?= h($it['notes'] ?? '') ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
 
-            <div class="hint" style="font-size:12px; color:var(--muted); margin-top:8px;">1 GP = 100 SP, 1 SP = 100 CP</div>
-          </div>
-
-          <div class="table" style="margin-top:12px;">
-            <div class="trow thead inv-head" style="display:grid; grid-template-columns: 1.2fr .7fr .9fr .6fr .7fr .8fr 1.6fr .4fr; gap:10px; font-size:12px; color:var(--muted); padding:8px 0;">
-              <div>Name</div><div>Equipped</div><div>Consumable</div><div>Qty</div><div>Charges</div><div>Icon</div><div>Description</div><div></div>
-            </div>
-
-            <div id="items">
-              <?php foreach ($inventory as $i => $it): ?>
-                <div class="trow" style="display:grid; grid-template-columns: 1.2fr .7fr .9fr .6fr .7fr .8fr 1.6fr .4fr; gap:10px; align-items:start; padding:10px 0; border-top:1px solid var(--border);">
-                  <input type="hidden" name="inv_id[]" value="<?= (int)$it['id'] ?>">
-
-                  <input name="inv_name[]" value="<?= h($it['name']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-
-                  <label class="row-inline" style="margin:0; justify-content:center;">
-                    <input type="checkbox" name="inv_equipped[<?= $i ?>]" value="1" <?= !empty($it['equipped'])?'checked':'' ?> <?= $canEdit ? '' : 'disabled' ?>>
-                  </label>
-
-                  <label class="row-inline" style="margin:0; justify-content:center;">
-                    <input type="checkbox" name="inv_consumable[<?= $i ?>]" value="1" <?= !empty($it['consumable'])?'checked':'' ?> <?= $canEdit ? '' : 'disabled' ?>>
-                  </label>
-
-                  <input class="numSmall" name="inv_qty[]" type="number" value="<?= (int)$it['qty'] ?>" <?= $canEdit ? '' : 'disabled' ?>>
-                  <input class="numSmall" name="inv_charges[]" type="number" value="<?= (int)$it['charges'] ?>" <?= $canEdit ? '' : 'disabled' ?>>
-                  <input name="inv_icon[]" value="<?= h($it['icon']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-
-                  <textarea name="inv_desc[]" rows="2" <?= $canEdit ? '' : 'disabled' ?>><?= h($it['description']) ?></textarea>
-
-                  <label class="row-inline" style="margin:0; justify-content:flex-end;">
-                    <input type="checkbox" name="inv_delete[]" value="<?= (int)$it['id'] ?>" <?= $canEdit ? '' : 'disabled' ?>>
-                    <span style="font-size:12px; color:var(--muted);">Del</span>
-                  </label>
+                    <input type="hidden" name="item_id[]" value="<?= (int)$it['id'] ?>">
+                    <input type="hidden" name="item_sort[]" value="<?= (int)$it['sort_order'] ?>">
+                  </div>
                 </div>
               <?php endforeach; ?>
             </div>
-          </div>
+          </section>
+        </section>
 
-        </div>
-      </section>
+        <!-- TAB: SPELLS -->
+        <section data-panel="spells" hidden>
+          <section class="card">
+            <div class="sectionTitle">
+              <h2 style="margin:0;">Spells</h2>
+              <button class="btn secondary" type="button" id="btnAddSpell" <?= $canEdit ? '' : 'disabled' ?>>+ Add</button>
+            </div>
+            <div id="spellList" class="list">
+              <?php foreach ($spells as $s): ?>
+                <div class="item spellItem" data-id="<?= (int)$s['id'] ?>">
+                  <div class="itemHead">
+                    <div><b><?= h($s['name'] ?? 'Spell') ?></b></div>
+                    <button type="button" class="btn danger btnRemoveSpell" <?= $canEdit ? '' : 'disabled' ?>>Remove</button>
+                  </div>
+                  <div class="grid2">
+                    <label>Name <input name="spell_name[]" value="<?= h($s['name'] ?? '') ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
+                    <label>Level <input name="spell_level[]" value="<?= h($s['level'] ?? '') ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
+                    <label>School <input name="spell_school[]" value="<?= h($s['school'] ?? '') ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
+                    <label>Prepared <input type="checkbox" name="spell_prepared[]" value="1" <?= ((int)($s['is_prepared'] ?? 0) === 1 ? 'checked' : '') ?> <?= $canEdit ? '' : 'disabled' ?>></label>
+                    <label>Notes <input name="spell_notes[]" value="<?= h($s['notes'] ?? '') ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
 
-      <?php if (!$canEdit): ?>
-        <p style="color:#b00020;">У вас є доступ лише на перегляд. Зверніться до адміна, щоб отримати право редагування.</p>
-      <?php endif; ?>
+                    <input type="hidden" name="spell_id[]" value="<?= (int)$s['id'] ?>">
+                    <input type="hidden" name="spell_sort[]" value="<?= (int)$s['sort_order'] ?>">
+                    <input type="hidden" name="spell_prepared_present[]" value="1">
+                  </div>
+                </div>
+              <?php endforeach; ?>
+            </div>
+          </section>
+        </section>
 
-    </section>
+        <!-- TAB: ABILITIES -->
+        <section data-panel="abilities" hidden>
+          <section class="card">
+            <div class="sectionTitle">
+              <h2 style="margin:0;">Abilities</h2>
+              <button class="btn secondary" type="button" id="btnAddAbility" <?= $canEdit ? '' : 'disabled' ?>>+ Add</button>
+            </div>
+            <div id="abilityList" class="list">
+              <?php foreach ($abilities as $a): ?>
+                <div class="item abilityItem" data-id="<?= (int)$a['id'] ?>">
+                  <div class="itemHead">
+                    <div><b><?= h($a['name'] ?? 'Ability') ?></b></div>
+                    <button type="button" class="btn danger btnRemoveAbility" <?= $canEdit ? '' : 'disabled' ?>>Remove</button>
+                  </div>
+                  <div class="grid2">
+                    <label>Name <input name="ability_name[]" value="<?= h($a['name'] ?? '') ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
+                    <label>Kind <input name="ability_kind[]" value="<?= h($a['kind'] ?? '') ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
+                    <label>Source <input name="ability_source[]" value="<?= h($a['source'] ?? '') ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
+                    <label>Description <input name="ability_description[]" value="<?= h($a['description'] ?? '') ?>" <?= $canEdit ? '' : 'disabled' ?>></label>
 
-    <!-- RIGHT (reference-like: Identity + Proficiencies) -->
+                    <input type="hidden" name="ability_id[]" value="<?= (int)$a['id'] ?>">
+                    <input type="hidden" name="ability_sort[]" value="<?= (int)$a['sort_order'] ?>">
+                  </div>
+                </div>
+              <?php endforeach; ?>
+            </div>
+          </section>
+        </section>
+</section>
+ </section>
+
     <aside class="sidebar-right">
-
-      <section class="card collapsible" data-collapse="identity">
-        <h2>Identity</h2>
-        <div class="cardBody">
-
-          <div class="grid2">
-            <label>Імʼя персонажа
-              <input id="charName" name="name" value="<?= h($ch['name']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-            </label>
-            <label>Імʼя гравця
-              <input id="playerName" name="player_name" value="<?= h($ch['player_name']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-            </label>
-          </div>
-
-          <div class="grid2">
-            <label>Клас
-              <input id="class" name="class_name" value="<?= h($ch['class_name']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-            </label>
-            <label>Рівень
-              <input id="level" name="level" type="number" min="1" max="20" value="<?= (int)$ch['level'] ?>" <?= $canEdit ? '' : 'disabled' ?>>
-            </label>
-          </div>
-
-          <div class="grid2">
-            <label>Раса
-              <input id="race" name="race" value="<?= h($ch['race']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-            </label>
-            <label>Світогляд
-              <input id="alignment" name="alignment" value="<?= h($ch['alignment']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-            </label>
-          </div>
-
-          <div class="grid2">
-            <label>Передісторія
-              <input id="background" name="background" value="<?= h($ch['background']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-            </label>
-            <label>Очки досвіду
-              <input id="xp" name="xp" value="<?= h($ch['xp']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-            </label>
-          </div>
-
-          <div class="grid2">
-            <label>Риси характеру
-              <textarea id="traits" name="traits" rows="4" <?= $canEdit ? '' : 'disabled' ?>></textarea>
-            </label>
-            <label>Ідеали
-              <textarea id="ideals" name="ideals" rows="4" <?= $canEdit ? '' : 'disabled' ?>></textarea>
-            </label>
-
-            <label>Прив'язаності
-              <textarea id="bonds" name="bonds" rows="4" <?= $canEdit ? '' : 'disabled' ?>></textarea>
-            </label>
-            <label>Слабкість
-              <textarea id="flaws" name="flaws" rows="4" <?= $canEdit ? '' : 'disabled' ?>></textarea>
-            </label>
-          </div>
-
-          <label>Backstory
-            <textarea id="backstory" name="backstory" rows="10" <?= $canEdit ? '' : 'disabled' ?>></textarea>
-          </label>
-
-        </div>
-      </section>
-
-      <section class="card collapsible" data-collapse="proficiencies">
-        <h2>Proficiencies</h2>
-        <div class="cardBody">
-          <div class="hint" style="font-size:12px; color:var(--muted);">
-            Плейсхолдер під proficiencies як у референсі (Weapons/Armor/Tools/Languages/Vehicles). Додамо коли буде таблиця/API.
-          </div>
-
-          <div class="profBlock" style="margin-top:10px;">
-            <div class="profHead" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-              <span>Weapons</span>
-              <button class="smallBtn secondary" type="button" id="addProfWeapon" disabled>+ Add</button>
+<section class="card collapsible open" data-collapse="identity" style="margin-top: 12px;">
+            <div class="collapseToggle">
+              <h2 style="margin:0;">Identity</h2>
+              <span class="muted">toggle</span>
             </div>
-            <div id="profWeapons"></div>
-          </div>
+            <div class="cardBody">
 
-          <div class="profBlock">
-            <div class="profHead" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-              <span>Armor</span>
-              <button class="smallBtn secondary" type="button" id="addProfArmor" disabled>+ Add</button>
+              <div class="grid2">
+                <div>
+                  <label>Ім'я гравця
+                    <input id="playerName" name="player_name" value="<?= h($ch['player_name']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+                  </label>
+                  <label>Раса
+                    <input id="race" name="race" value="<?= h($ch['race']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+                  </label>
+                  <label>Клас
+                    <input id="className" name="class_name" value="<?= h($ch['class_name']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+                  </label>
+                  <label>Рівень
+                    <input id="level" type="number" min="1" max="20" name="level" value="<?= (int)($ch['level'] ?? 1) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+                  </label>
+                </div>
+
+                <div>
+                  <label>Світогляд
+                    <input id="alignment" name="alignment" value="<?= h($ch['alignment']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+                  </label>
+                  <div class="grid2">
+                    <label>Передісторія
+                      <input id="background" name="background" value="<?= h($ch['background']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+                    </label>
+                    <label>Очки досвіду
+                      <input id="xp" name="xp" value="<?= h($ch['xp']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+                    </label>
+                  </div>
+
+                  <div class="grid2">
+                    <label>Риси характеру
+                      <textarea id="traits" name="traits" rows="4" <?= $canEdit ? '' : 'disabled' ?>><?= h($notes["traits"] ?? "") ?></textarea>
+                    </label>
+                    <label>Ідеали
+                      <textarea id="ideals" name="ideals" rows="4" <?= $canEdit ? '' : 'disabled' ?>><?= h($notes["ideals"] ?? "") ?></textarea>
+                    </label>
+
+                    <label>Прив'язаності
+                      <textarea id="bonds" name="bonds" rows="4" <?= $canEdit ? '' : 'disabled' ?>><?= h($notes["bonds"] ?? "") ?></textarea>
+                    </label>
+                    <label>Слабкість
+                      <textarea id="flaws" name="flaws" rows="4" <?= $canEdit ? '' : 'disabled' ?>><?= h($notes["flaws"] ?? "") ?></textarea>
+                    </label>
+                  </div>
+
+                  <label>Backstory
+                    <textarea id="backstory" name="backstory" rows="10" <?= $canEdit ? '' : 'disabled' ?>><?= h($notes["backstory"] ?? "") ?></textarea>
+                  </label>
+
+                </div>
+              </div>
+
             </div>
-            <div id="profArmor"></div>
-          </div>
+          </section>
 
-          <div class="profBlock">
-            <div class="profHead" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-              <span>Tools</span>
-              <button class="smallBtn secondary" type="button" id="addProfTools" disabled>+ Add</button>
-            </div>
-            <div id="profTools"></div>
-          </div>
+<section class="card collapsible open" data-collapse="profs" style="margin-top: 12px;">
+  <div class="collapseToggle">
+    <h2 style="margin:0;">Proficiencies</h2>
+    <span class="muted">toggle</span>
+  </div>
 
-          <div class="profBlock">
-            <div class="profHead" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-              <span>Languages</span>
-              <button class="smallBtn secondary" type="button" id="addProfLang" disabled>+ Add</button>
-            </div>
-            <div id="profLang"></div>
-          </div>
+  <div class="cardBody">
 
-          <div class="profBlock">
-            <div class="profHead" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-              <span>Vehicles / Transport</span>
-              <button class="smallBtn secondary" type="button" id="addProfVehicle" disabled>+ Add</button>
-            </div>
-            <div id="profVehicle"></div>
-          </div>
+    <div class="profBlock">
+      <div class="profHead">
+        <span>Weapons</span>
+        <button class="smallBtn" type="button" id="addProfWeapon" <?= $canEdit ? '' : 'disabled' ?>>+ Add</button>
+      </div>
+      <div id="profWeapons"></div>
+    </div>
 
-        </div>
-      </section>
+    <div class="profBlock">
+      <div class="profHead">
+        <span>Armor</span>
+        <button class="smallBtn" type="button" id="addProfArmor" <?= $canEdit ? '' : 'disabled' ?>>+ Add</button>
+      </div>
+      <div id="profArmor"></div>
+    </div>
 
-    </aside>
+    <div class="profBlock">
+      <div class="profHead">
+        <span>Tools</span>
+        <button class="smallBtn" type="button" id="addProfTools" <?= $canEdit ? '' : 'disabled' ?>>+ Add</button>
+      </div>
+      <div id="profTools"></div>
+    </div>
 
-  </main>
+    <div class="profBlock">
+      <div class="profHead">
+        <span>Languages</span>
+        <button class="smallBtn" type="button" id="addProfLang" <?= $canEdit ? '' : 'disabled' ?>>+ Add</button>
+      </div>
+      <div id="profLang"></div>
+    </div>
+
+    <div class="profBlock">
+      <div class="profHead">
+        <span>Vehicles</span>
+        <button class="smallBtn" type="button" id="addProfVehicle" <?= $canEdit ? '' : 'disabled' ?>>+ Add</button>
+      </div>
+      <div id="profVehicle"></div>
+    </div>
+
+  </div>
+</section>
+</aside>
+</main>
 </form>
 
+<div class="toast" id="toast"></div>
+
+
 <script>
-(function(){
-  // --- Segmented toggle: spells vs abilities (no external app.js) ---
-  const toggle = document.getElementById('spellsModeToggle');
-  const spellsPane = document.getElementById('spellsPane');
-  const abilitiesPane = document.getElementById('abilitiesPane');
-  if (toggle && spellsPane && abilitiesPane) {
-    const btns = Array.from(toggle.querySelectorAll('.segBtn'));
-    const setMode = (mode) => {
-      const isSpells = mode === 'spells';
-      spellsPane.style.display = isSpells ? '' : 'none';
-      abilitiesPane.style.display = isSpells ? 'none' : '';
-      btns.forEach(b => b.classList.toggle('secondary', true));
-      btns.forEach(b => b.style.opacity = (b.dataset.mode === mode) ? '1' : '.75');
-    };
-    btns.forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
-    setMode('spells');
-  }
-
-  // --- Avatar: click upload + Ctrl+V paste + URL load ---
+(() => {
   const canEdit = <?= $canEdit ? 'true' : 'false' ?>;
-  const drop = document.getElementById('avatarDrop');
-  const file = document.getElementById('avatarFile');
-  const img  = document.getElementById('avatarImg');
-  const fb   = document.getElementById('avatarFallback');
-  const urlBlock = document.getElementById('avatarUrlBlock');
-  const urlInput = document.getElementById('avatarUrl');
-  const urlHidden = document.getElementById('avatarUrlHidden');
-  const dataHidden = document.getElementById('avatarDataHidden');
+  const charId = <?= (int)$charId ?>;
+  const initialSkills = <?= json_encode($skillsMap, JSON_UNESCAPED_UNICODE) ?>;
+  const initialProfs = <?= json_encode($profs, JSON_UNESCAPED_UNICODE) ?>;
 
-  function setAvatarSrc(src){
-    if (!img || !fb) return;
-    if (src) {
-      img.src = src;
-      img.style.display = '';
-      fb.style.display = 'none';
-      if (urlBlock) urlBlock.style.display = 'none';
-    } else {
-      img.removeAttribute('src');
-      img.style.display = 'none';
-      fb.style.display = '';
-      if (urlBlock) urlBlock.style.display = '';
-    }
-  }
+  const toast = (msg) => {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 2200);
+  };
 
-  async function fileToDataUrl(f){
-    return new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve(String(r.result || ''));
-      r.onerror = reject;
-      r.readAsDataURL(f);
+  // Tabs
+  const tabBtns = Array.from(document.querySelectorAll('[data-tab]'));
+  const panels = Array.from(document.querySelectorAll('[data-panel]'));
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const key = btn.getAttribute('data-tab');
+      panels.forEach(p => p.hidden = (p.getAttribute('data-panel') !== key));
     });
-  }
+  });
 
-  if (drop && file && canEdit) {
-    drop.addEventListener('click', () => file.click());
-    file.addEventListener('change', async () => {
-      const f = file.files && file.files[0];
+  // Collapsibles
+  document.querySelectorAll('.collapsible').forEach(card => {
+    const t = card.querySelector('.collapseToggle');
+    if (!t) return;
+    t.addEventListener('click', () => card.classList.toggle('open'));
+  });
+
+  // Avatar file -> base64
+  const avatarFile = document.getElementById('avatarFile');
+  const avatarData = document.getElementById('avatarData');
+  const avatarUrl  = document.getElementById('avatarUrl');
+  const preview    = document.getElementById('avatarPreview');
+  const btnClear   = document.getElementById('btnClearAvatar');
+
+  const setPreview = (src) => {
+    preview.innerHTML = src ? `<img src="${src}" alt="avatar">` : `<span class="muted">No avatar</span>`;
+  };
+
+  if (avatarFile && canEdit) {
+    avatarFile.addEventListener('change', async (e) => {
+      const f = e.target.files && e.target.files[0];
       if (!f) return;
-      const dataUrl = await fileToDataUrl(f);
-      setAvatarSrc(dataUrl);
-      if (dataHidden) dataHidden.value = dataUrl; // store as data:...
-      if (urlHidden) urlHidden.value = '';
-      if (urlInput) urlInput.value = '';
-    });
-
-    window.addEventListener('paste', async (e) => {
-      if (!e.clipboardData) return;
-      const items = Array.from(e.clipboardData.items || []);
-      const imgItem = items.find(it => it.type && it.type.startsWith('image/'));
-      if (!imgItem) return;
-      const f = imgItem.getAsFile();
-      if (!f) return;
-      const dataUrl = await fileToDataUrl(f);
-      setAvatarSrc(dataUrl);
-      if (dataHidden) dataHidden.value = dataUrl;
-      if (urlHidden) urlHidden.value = '';
-      if (urlInput) urlInput.value = '';
+      const reader = new FileReader();
+      reader.onload = () => {
+        const src = String(reader.result || '');
+        avatarData.value = src;
+        if (avatarUrl) avatarUrl.value = '';
+        setPreview(src);
+      };
+      reader.readAsDataURL(f);
     });
   }
 
-  if (urlInput && canEdit) {
-    urlInput.addEventListener('change', () => {
-      const v = (urlInput.value || '').trim();
-      if (urlHidden) urlHidden.value = v;
-      if (dataHidden) dataHidden.value = '';
-      setAvatarSrc(v);
+  if (avatarUrl && canEdit) {
+    avatarUrl.addEventListener('input', () => {
+      const v = avatarUrl.value.trim();
+      if (v) avatarData.value = '';
+      setPreview(v || avatarData.value);
     });
   }
 
-  // --- Minimal "Add" buttons: add empty rows client-side (safe, no backend changes) ---
-  function addWeaponRow(){
-    const wrap = document.getElementById('weaponsTable');
-    if (!wrap) return;
-    const row = document.createElement('div');
-    row.className = 'trow';
-    row.style.cssText = 'display:grid; grid-template-columns: 1.4fr .7fr .9fr .4fr; gap:10px; align-items:center; padding:10px 0; border-top:1px solid var(--border);';
-    row.innerHTML = `
-      <input type="hidden" name="wp_id[]" value="0">
-      <input name="wp_name[]" value="" placeholder="Name">
-      <input name="wp_atk[]" value="" placeholder="ATK">
-      <input name="wp_dmg[]" value="" placeholder="DMG">
-      <label class="row-inline" style="margin:0; justify-content:flex-end;">
-        <input type="checkbox" name="wp_delete[]" value="0" disabled>
-        <span style="font-size:12px; color:var(--muted);">Del</span>
-      </label>
-    `;
-    wrap.appendChild(row);
+  if (btnClear && canEdit) {
+    btnClear.addEventListener('click', () => {
+      if (avatarFile) avatarFile.value = '';
+      if (avatarUrl) avatarUrl.value = '';
+      if (avatarData) avatarData.value = '';
+      setPreview('');
+    });
   }
-  function addItemRow(){
-    const wrap = document.getElementById('items');
-    if (!wrap) return;
-    const row = document.createElement('div');
-    row.className = 'trow';
-    row.style.cssText = 'display:grid; grid-template-columns: 1.2fr .7fr .9fr .6fr .7fr .8fr 1.6fr .4fr; gap:10px; align-items:start; padding:10px 0; border-top:1px solid var(--border);';
-    // note: new rows use index "_new_" so API can detect; if not supported, it will just ignore safely
-    row.innerHTML = `
-      <input type="hidden" name="inv_id[]" value="0">
-      <input name="inv_name[]" value="" placeholder="Name">
-      <label class="row-inline" style="margin:0; justify-content:center;"><input type="checkbox" name="inv_equipped_new[]" value="1"></label>
-      <label class="row-inline" style="margin:0; justify-content:center;"><input type="checkbox" name="inv_consumable_new[]" value="1"></label>
-      <input class="numSmall" name="inv_qty[]" type="number" value="1">
-      <input class="numSmall" name="inv_charges[]" type="number" value="0">
-      <input name="inv_icon[]" value="" placeholder="Icon">
-      <textarea name="inv_desc[]" rows="2" placeholder="Description"></textarea>
-      <div></div>
-    `;
-    wrap.appendChild(row);
-  }
-  function addSpellCard(){
-    const wrap = document.getElementById('spellsEditor');
-    if (!wrap) return;
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.style.cssText = 'box-shadow:none; margin:10px 0; border:1px solid var(--border);';
-    card.innerHTML = `
-      <input type="hidden" name="sp_id[]" value="0">
+
+  // Dynamic lists helpers
+  const q = (sel) => document.querySelector(sel);
+
+  // Inventory add/remove
+  const invList = q('#invList');
+  const btnAddItem = q('#btnAddItem');
+  const addInvItem = () => {
+    const el = document.createElement('div');
+    el.className = 'item invItem';
+    el.innerHTML = `
+      <div class="itemHead">
+        <div><b>New Item</b></div>
+        <button type="button" class="btn danger btnRemoveItem">Remove</button>
+      </div>
       <div class="grid2">
-        <label>UID <input name="sp_uid[]" value=""></label>
-        <label>Name <input name="sp_name[]" value=""></label>
+        <label>Name <input name="item_name[]" value=""></label>
+        <label>Qty <input type="number" min="0" name="item_qty[]" value="1"></label>
+        <label>Weight <input name="item_weight[]" value=""></label>
+        <label>Notes <input name="item_notes[]" value=""></label>
+
+        <input type="hidden" name="item_id[]" value="0">
+        <input type="hidden" name="item_sort[]" value="0">
       </div>
-      <div class="row">
-        <label style="min-width:160px;">Kind
-          <select name="sp_kind[]">
-            <option value="spell" selected>spell</option>
-            <option value="cantrip">cantrip</option>
-          </select>
-        </label>
-        <label>Level <input class="numSmall" name="sp_level[]" type="number" min="0" max="9" value="0"></label>
-        <label>Charges <input class="numSmall" name="sp_charges[]" type="number" value="0"></label>
-        <label class="row-inline" style="margin:0;"><input name="sp_used[]" type="checkbox" value="0"> Used</label>
-      </div>
-      <label>Description <textarea name="sp_desc[]" rows="2"></textarea></label>
-      <div class="hint" style="font-size:12px; color:var(--muted);">Новий запис збережеться після Save (якщо API підтримує вставку id=0).</div>
     `;
-    wrap.appendChild(card);
-  }
-  function addAbilityCard(){
-    const wrap = document.getElementById('abilitiesEditor');
-    if (!wrap) return;
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.style.cssText = 'box-shadow:none; margin:10px 0; border:1px solid var(--border);';
-    card.innerHTML = `
-      <input type="hidden" name="ab_id[]" value="0">
-      <label>Name <input name="ab_name[]" value=""></label>
+    invList.appendChild(el);
+  };
+  invList?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.btnRemoveItem');
+    if (!btn) return;
+    btn.closest('.invItem')?.remove();
+  });
+  if (btnAddItem && canEdit) btnAddItem.addEventListener('click', addInvItem);
+
+  // Weapons add/remove
+  const weaponList = q('#weaponList');
+  const btnAddWeapon = q('#btnAddWeapon');
+  const addWeaponItem = () => {
+    const el = document.createElement('div');
+    el.className = 'item weaponItem';
+    el.innerHTML = `
+      <div class="itemHead">
+        <div><b>New Weapon</b></div>
+        <button type="button" class="btn danger btnRemoveWeapon">Remove</button>
+      </div>
       <div class="grid2">
-        <label>Kind <input name="ab_kind[]" value=""></label>
-        <label>Source <input name="ab_source[]" value=""></label>
+        <label>Name <input name="weapon_name[]" value=""></label>
+        <label>Attack bonus <input name="weapon_attack_bonus[]" value=""></label>
+        <label>Damage <input name="weapon_damage[]" value=""></label>
+        <label>Type <input name="weapon_type[]" value=""></label>
+        <label>Notes <input name="weapon_notes[]" value=""></label>
+
+        <input type="hidden" name="weapon_id[]" value="0">
+        <input type="hidden" name="weapon_sort[]" value="0">
       </div>
-      <label>Description <textarea name="ab_desc[]" rows="2"></textarea></label>
-      <div class="hint" style="font-size:12px; color:var(--muted);">Новий запис збережеться після Save (якщо API підтримує вставку id=0).</div>
     `;
-    wrap.appendChild(card);
-  }
+    weaponList.appendChild(el);
+  };
+  weaponList?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.btnRemoveWeapon');
+    if (!btn) return;
+    btn.closest('.weaponItem')?.remove();
+  });
+  if (btnAddWeapon && canEdit) btnAddWeapon.addEventListener('click', addWeaponItem);
 
-  const btnAddWeapon = document.getElementById('addWeapon');
-  const btnAddItem   = document.getElementById('addItem');
-  const btnAddSpell  = document.getElementById('addSpell');
-  const btnAddAbility= document.getElementById('addAbility');
+  // Spells add/remove
+  const spellList = q('#spellList');
+  const btnAddSpell = q('#btnAddSpell');
+  const addSpellCard = () => {
+    const el = document.createElement('div');
+    el.className = 'item spellItem';
+    el.innerHTML = `
+      <div class="itemHead">
+        <div><b>New Spell</b></div>
+        <button type="button" class="btn danger btnRemoveSpell">Remove</button>
+      </div>
+      <div class="grid2">
+        <label>Name <input name="spell_name[]" value=""></label>
+        <label>Level <input name="spell_level[]" value=""></label>
+        <label>School <input name="spell_school[]" value=""></label>
+        <label>Prepared <input type="checkbox" name="spell_prepared[]" value="1"></label>
+        <label>Notes <input name="spell_notes[]" value=""></label>
 
-  if (btnAddWeapon && canEdit) btnAddWeapon.addEventListener('click', addWeaponRow);
-  if (btnAddItem && canEdit) btnAddItem.addEventListener('click', addItemRow);
+        <input type="hidden" name="spell_id[]" value="0">
+        <input type="hidden" name="spell_sort[]" value="0">
+        <input type="hidden" name="spell_prepared_present[]" value="1">
+      </div>
+    `;
+    spellList.appendChild(el);
+  };
+  spellList?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.btnRemoveSpell');
+    if (!btn) return;
+    btn.closest('.spellItem')?.remove();
+  });
   if (btnAddSpell && canEdit) btnAddSpell.addEventListener('click', addSpellCard);
+
+  // Abilities add/remove
+  const abilityList = q('#abilityList');
+  const btnAddAbility = q('#btnAddAbility');
+  const addAbilityCard = () => {
+    const el = document.createElement('div');
+    el.className = 'item abilityItem';
+    el.innerHTML = `
+      <div class="itemHead">
+        <div><b>New Ability</b></div>
+        <button type="button" class="btn danger btnRemoveAbility">Remove</button>
+      </div>
+      <div class="grid2">
+        <label>Name <input name="ability_name[]" value=""></label>
+        <label>Kind <input name="ability_kind[]" value=""></label>
+        <label>Source <input name="ability_source[]" value=""></label>
+        <label>Description <input name="ability_description[]" value=""></label>
+
+        <input type="hidden" name="ability_id[]" value="0">
+        <input type="hidden" name="ability_sort[]" value="0">
+      </div>
+    `;
+    abilityList.appendChild(el);
+  };
+  abilityList?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.btnRemoveAbility');
+    if (!btn) return;
+    btn.closest('.abilityItem')?.remove();
+  });
   if (btnAddAbility && canEdit) btnAddAbility.addEventListener('click', addAbilityCard);
 
+  // ===== Skills + Proficiencies =====
+  const SKILLS = [
+    {code:'acrobatics',   name:'Acrobatics',      ability:'dex'},
+    {code:'animal',       name:'Animal Handling', ability:'wis'},
+    {code:'arcana',       name:'Arcana',          ability:'int'},
+    {code:'athletics',    name:'Athletics',       ability:'str'},
+    {code:'deception',    name:'Deception',       ability:'cha'},
+    {code:'history',      name:'History',         ability:'int'},
+    {code:'insight',      name:'Insight',         ability:'wis'},
+    {code:'intimidation', name:'Intimidation',    ability:'cha'},
+    {code:'investigation',name:'Investigation',   ability:'int'},
+    {code:'medicine',     name:'Medicine',        ability:'wis'},
+    {code:'nature',       name:'Nature',          ability:'int'},
+    {code:'perception',   name:'Perception',      ability:'wis'},
+    {code:'performance',  name:'Performance',     ability:'cha'},
+    {code:'persuasion',   name:'Persuasion',      ability:'cha'},
+    {code:'religion',     name:'Religion',        ability:'int'},
+    {code:'sleight',      name:'Sleight of Hand', ability:'dex'},
+    {code:'stealth',      name:'Stealth',         ability:'dex'},
+    {code:'survival',     name:'Survival',        ability:'wis'},
+  ];
+
+  const state = {
+    skills: JSON.parse(JSON.stringify(initialSkills || {})),
+    profs:  JSON.parse(JSON.stringify(initialProfs || {weapons:[],armor:[],tools:[],languages:[],vehicles:[]})),
+  };
+
+  const getLevel = () => {
+    const el = document.querySelector('input[name="level"]');
+    const v = el ? parseInt(el.value || '1', 10) : 1;
+    return Number.isFinite(v) ? Math.min(20, Math.max(1, v)) : 1;
+  };
+  const getPB = () => 2 + Math.floor((getLevel() - 1) / 4);
+
+  const getStatScore = (k) => {
+    const el = document.querySelector(`input[name="stat_${k}"]`);
+    const v = el ? parseInt(el.value || '10', 10) : 10;
+    return Number.isFinite(v) ? v : 10;
+  };
+  const statMod = (score) => Math.floor((score - 10) / 2);
+  const fmtMod = (n) => (n >= 0 ? `+${n}` : `${n}`);
+
+  const computeSkillTotal = (skillCode) => {
+    const def = SKILLS.find(s => s.code === skillCode);
+    if (!def) return 0;
+
+    const mod = statMod(getStatScore(def.ability));
+    const row = state.skills[skillCode] || {proficiency_level:0, bonus_override:null};
+
+    const override = row.bonus_override;
+    if (override !== null && override !== undefined && override !== '') {
+      const ov = parseInt(override, 10);
+      if (Number.isFinite(ov)) return ov;
+    }
+
+    const prof = parseInt(row.proficiency_level || 0, 10);
+    const pb = getPB();
+    const pbPart = prof === 2 ? (2 * pb) : (prof === 1 ? pb : 0);
+    return mod + pbPart;
+  };
+
+  const renderSkills = () => {
+    const root = document.getElementById('skillsList');
+    if (!root) return;
+    root.innerHTML = '';
+
+    SKILLS.forEach(s => {
+      const row = state.skills[s.code] || {proficiency_level:0, bonus_override:null};
+      const total = computeSkillTotal(s.code);
+
+      const wrap = document.createElement('div');
+      wrap.className = 'skillRow';
+
+      const left = document.createElement('div');
+      left.innerHTML = `<div class="skillName"><b>${s.name}</b> <span class="skillMeta">(${s.ability.toUpperCase()})</span></div>`;
+
+      const right = document.createElement('div');
+      right.className = 'row-inline';
+
+      if (canEdit) {
+        const sel = document.createElement('select');
+        sel.innerHTML = `
+          <option value="0">—</option>
+          <option value="1">Prof</option>
+          <option value="2">Exp</option>
+        `;
+        sel.value = String(row.proficiency_level ?? 0);
+        sel.addEventListener('change', () => {
+          state.skills[s.code] = state.skills[s.code] || {};
+          state.skills[s.code].proficiency_level = parseInt(sel.value, 10) || 0;
+          renderSkills();
+        });
+
+        const ov = document.createElement('input');
+        ov.type = 'number';
+        ov.style.width = '76px';
+        ov.placeholder = 'auto';
+        ov.value = (row.bonus_override === null || row.bonus_override === undefined) ? '' : String(row.bonus_override);
+        ov.addEventListener('input', () => {
+          state.skills[s.code] = state.skills[s.code] || {};
+          const v = ov.value.trim();
+          state.skills[s.code].bonus_override = (v === '' ? null : parseInt(v, 10));
+          renderSkills();
+        });
+
+        right.appendChild(sel);
+        right.appendChild(ov);
+      }
+
+      const pill = document.createElement('span');
+      pill.className = 'pill';
+      pill.textContent = fmtMod(total);
+
+      right.appendChild(pill);
+
+      wrap.appendChild(left);
+      wrap.appendChild(right);
+      root.appendChild(wrap);
+    });
+  };
+
+  const renderProfType = (type, containerId) => {
+    const root = document.getElementById(containerId);
+    if (!root) return;
+
+    const list = state.profs[type] || [];
+    root.innerHTML = '';
+    const tagList = document.createElement('div');
+    tagList.className = 'tagList';
+
+    list.forEach((name, idx) => {
+      const tag = document.createElement('span');
+      tag.className = 'tag';
+      tag.appendChild(document.createTextNode(name));
+
+      if (canEdit) {
+        const x = document.createElement('button');
+        x.type = 'button';
+        x.textContent = '×';
+        x.title = 'Remove';
+        x.addEventListener('click', () => {
+          state.profs[type].splice(idx, 1);
+          renderProfs();
+        });
+        tag.appendChild(x);
+      }
+
+      tagList.appendChild(tag);
+    });
+
+    root.appendChild(tagList);
+  };
+
+  const renderProfs = () => {
+    renderProfType('weapons','profWeapons');
+    renderProfType('armor','profArmor');
+    renderProfType('tools','profTools');
+    renderProfType('languages','profLang');
+    renderProfType('vehicles','profVehicle');
+  };
+
+  const addProf = (type) => {
+    if (!canEdit) return;
+    const name = prompt('Add proficiency:');
+    if (!name) return;
+    const clean = name.trim();
+    if (!clean) return;
+    state.profs[type] = state.profs[type] || [];
+    if (!state.profs[type].includes(clean)) state.profs[type].push(clean);
+    state.profs[type].sort((a,b)=>a.localeCompare(b));
+    renderProfs();
+  };
+
+  const bindProfButtons = () => {
+    const map = [
+      ['addProfWeapon','weapons'],
+      ['addProfArmor','armor'],
+      ['addProfTools','tools'],
+      ['addProfLang','languages'],
+      ['addProfVehicle','vehicles'],
+    ];
+    map.forEach(([id,type]) => {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+      btn.addEventListener('click', () => addProf(type));
+    });
+  };
+
+  const saveExtras = async () => {
+    const fd = new FormData();
+    fd.append('id', String(charId));
+    fd.append('skills_json', JSON.stringify(state.skills || {}));
+    fd.append('profs_json', JSON.stringify(state.profs || {}));
+
+    const res = await fetch('/api/character_extras_save.php', { method:'POST', body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) throw new Error(data.error || 'Extras save failed');
+  };
+
+  // Recompute totals when stats/level change
+  ['str','dex','con','int','wis','cha'].forEach(k => {
+    document.querySelector(`input[name="stat_${k}"]`)?.addEventListener('input', renderSkills);
+  });
+  document.querySelector('input[name="level"]')?.addEventListener('input', renderSkills);
+
+  renderSkills();
+  renderProfs();
+  bindProfButtons();
+
+// Save
+  const btnSave = q('#btnSave');
+  const form = q('#charForm');
+
+  if (btnSave && form) {
+    btnSave.addEventListener('click', async () => {
+      if (!canEdit) return;
+      btnSave.disabled = true;
+
+      try {
+        const fd = new FormData(form);
+        const res = await fetch(form.action, { method: 'POST', body: fd });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) {
+          toast(data.error || 'Save failed');
+        } else {
+          try { await saveExtras(); } catch(e){ toast(e.message || 'Extras save failed'); }
+          toast('Saved');
+        }
+      } catch (e) {
+        toast('Network error');
+      } finally {
+        btnSave.disabled = false;
+      }
+    });
+  }
+
+  // Export
+  const btnExport = q('#btnExport');
+  if (btnExport) {
+    btnExport.addEventListener('click', () => {
+      const obj = {};
+      const fd = new FormData(document.getElementById('charForm'));
+      fd.forEach((v,k) => {
+        if (obj[k] === undefined) obj[k] = v;
+        else if (Array.isArray(obj[k])) obj[k].push(v);
+        else obj[k] = [obj[k], v];
+      });
+      const blob = new Blob([JSON.stringify(obj, null, 2)], { type:'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'character_export.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+  }
+
 })();
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+  // -----------------------
+  // TABS
+  // -----------------------
+  const tabButtons = document.querySelectorAll('.tabs button');
+  const panels = document.querySelectorAll('[data-panel]');
+
+  tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.tab;
+
+      // активна кнопка
+      tabButtons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      // показати потрібну панель
+      panels.forEach(panel => {
+        if (panel.dataset.panel === target) {
+          panel.hidden = false;
+        } else {
+          panel.hidden = true;
+        }
+      });
+    });
+  });
+
+});
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+  const collapsibles = document.querySelectorAll('.collapsible');
+
+  collapsibles.forEach(card => {
+    const toggle = card.querySelector('.collapseToggle');
+    const body = card.querySelector('.cardBody');
+
+    if (!toggle || !body) return;
+
+    const key = 'collapse_' + card.dataset.collapse;
+
+    // відновити стан
+    const saved = localStorage.getItem(key);
+    if (saved === 'closed') {
+      body.style.display = 'none';
+      card.classList.remove('open');
+    }
+
+    toggle.addEventListener('click', () => {
+      const isOpen = body.style.display !== 'none';
+
+      if (isOpen) {
+        body.style.display = 'none';
+        card.classList.remove('open');
+        localStorage.setItem(key, 'closed');
+      } else {
+        body.style.display = '';
+        card.classList.add('open');
+        localStorage.setItem(key, 'open');
+      }
+    });
+  });
+
+});
 </script>
 
 </body>
@@ -2214,7 +2623,7 @@ $schools = db()->query("
 
 ======================================================================
 FILE: D:\Projects\games\site-fondry\tabletops_3\api\character_get.php
-MODIFIED: 2026-02-14 20:45:30 | SIZE: 7161 bytes
+MODIFIED: 2026-02-14 21:45:32 | SIZE: 5026 bytes
 ======================================================================
 
 <?php
@@ -2224,221 +2633,176 @@ require_once __DIR__ . '/../inc/auth.php';
 require_once __DIR__ . '/../inc/db.php';
 
 require_login();
-header('Content-Type: application/json; charset=utf-8');
-
 $user = current_user();
-$uid = (int)($user['id'] ?? 0);
+$uid  = (int)($user['id'] ?? 0);
 $role = (string)($user['role'] ?? 'user');
 
-$charId = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-if ($charId <= 0) {
-  http_response_code(400);
-  echo json_encode(['ok' => false, 'error' => 'Missing id']);
+header('Content-Type: application/json; charset=utf-8');
+
+function json_fail(string $msg, int $code = 400): void {
+  http_response_code($code);
+  echo json_encode(['ok' => false, 'error' => $msg], JSON_UNESCAPED_UNICODE);
+  exit;
+}
+function json_ok(array $payload): void {
+  echo json_encode(array_merge(['ok' => true], $payload), JSON_UNESCAPED_UNICODE);
   exit;
 }
 
-$stmt = db()->prepare("SELECT * FROM characters WHERE id=?");
-$stmt->execute([$charId]);
-$ch = $stmt->fetch();
-if (!$ch) {
-  http_response_code(404);
-  echo json_encode(['ok' => false, 'error' => 'Not found']);
-  exit;
-}
+$pdo = db();
 
-// access: admin OR owner OR shared
+$charId = 0;
+if (isset($_GET['id']) && $_GET['id'] !== '') $charId = (int)$_GET['id'];
+elseif (isset($_POST['id']) && $_POST['id'] !== '') $charId = (int)$_POST['id'];
+
+if ($charId <= 0) json_fail('Missing id', 400);
+
+// --- load character ---
+$st = $pdo->prepare("SELECT * FROM characters WHERE id=?");
+$st->execute([$charId]);
+$ch = $st->fetch();
+if (!$ch) json_fail('Not found', 404);
+
+// --- access check ---
+$canView = false;
 $canEdit = false;
 
-if ($role !== 'admin' && (int)$ch['owner_user_id'] !== $uid) {
-    $accSt = $pdo->prepare("SELECT can_edit FROM character_access WHERE character_id=? AND user_id=? LIMIT 1");
-    $accSt->execute([$charId, $uid]);
-    $acc = $accSt->fetch();
-  
-    if (!$acc || (int)$acc['can_edit'] !== 1) {
-      http_response_code(403);
-      echo "Forbidden";
-      exit;
+if ($role === 'admin') {
+  $canView = true;
+  $canEdit = true;
+} elseif ((int)$ch['owner_user_id'] === $uid) {
+  $canView = true;
+  $canEdit = true;
+} else {
+  $accSt = $pdo->prepare("
+    SELECT can_edit
+    FROM character_access
+    WHERE character_id=? AND user_id=?
+    LIMIT 1
+  ");
+  $accSt->execute([$charId, $uid]);
+  $acc = $accSt->fetch();
+  if (!$acc) json_fail('Forbidden', 403);
+  $canView = true;
+  $canEdit = ((int)$acc['can_edit'] === 1);
+}
+
+// --- stats/resources/coins ---
+$st2 = $pdo->prepare("SELECT * FROM character_stats WHERE character_id=?");
+$st2->execute([$charId]);
+$stats = $st2->fetch() ?: [];
+
+$st3 = $pdo->prepare("SELECT * FROM character_resources WHERE character_id=?");
+$st3->execute([$charId]);
+$res = $st3->fetch() ?: [];
+
+$st4 = $pdo->prepare("SELECT * FROM character_coins WHERE character_id=?");
+$st4->execute([$charId]);
+$coins = $st4->fetch() ?: [];
+
+// --- lists ---
+$invSt = $pdo->prepare("SELECT * FROM character_inventory WHERE character_id=? ORDER BY sort_order,id");
+$invSt->execute([$charId]);
+$inventory = $invSt->fetchAll();
+
+$wpSt = $pdo->prepare("SELECT * FROM character_weapons WHERE character_id=? ORDER BY sort_order,id");
+$wpSt->execute([$charId]);
+$weapons = $wpSt->fetchAll();
+
+$spSt = $pdo->prepare("SELECT * FROM character_spells WHERE character_id=? ORDER BY sort_order,id");
+$spSt->execute([$charId]);
+$spells = $spSt->fetchAll();
+
+$abSt = $pdo->prepare("SELECT * FROM character_abilities WHERE character_id=? ORDER BY sort_order,id");
+$abSt->execute([$charId]);
+$abilities = $abSt->fetchAll();
+
+// --- notes (optional table) ---
+$notes = [
+  'session_notes' => '',
+  'quick_notes'   => '',
+  'traits'        => '',
+  'ideals'        => '',
+  'bonds'         => '',
+  'flaws'         => '',
+  'backstory'     => '',
+];
+
+try {
+  $ntSt = $pdo->prepare("
+    SELECT session_notes, quick_notes, traits, ideals, bonds, flaws, backstory
+    FROM character_notes
+    WHERE character_id=?
+    LIMIT 1
+  ");
+  $ntSt->execute([$charId]);
+  $row = $ntSt->fetch();
+  if ($row) {
+    foreach ($notes as $k => $_) {
+      if (array_key_exists($k, $row) && $row[$k] !== null) {
+        $notes[$k] = (string)$row[$k];
+      }
     }
   }
-  
+} catch (Throwable $e) {
+  // якщо таблиці ще нема — ок
+}
 
+// --- shared access list for admin ---
+$shared = [];
+if ($role === 'admin') {
+  $sSt = $pdo->prepare("
+    SELECT a.user_id, a.can_edit, u.username
+    FROM character_access a
+    LEFT JOIN users u ON u.id=a.user_id
+    WHERE a.character_id=?
+    ORDER BY u.username
+  ");
+  $sSt->execute([$charId]);
+  $shared = $sSt->fetchAll();
+}
 
-// 1) characters -> identity частково
-// 2) підтаблиці -> state.*
-$state = [];
-
-$state['identity'] = [
-  'shortName' => (string)$ch['name'],
-  'className' => (string)$ch['class_name'],
-  'level' => (int)$ch['level'],
-  'playerName' => (string)$ch['player_name'],
-  'race' => (string)$ch['race'],
-  'alignment' => (string)$ch['alignment'],
-  'background' => (string)$ch['background'],
-  'xp' => (string)$ch['xp'],
-  'avatar' => (string)($ch['avatar_data'] ?: $ch['avatar_url'] ?: ''),
-];
-
-$st = db()->prepare("SELECT * FROM character_stats WHERE character_id=?");
-$st->execute([$charId]);
-$row = $st->fetch() ?: [];
-
-$state['stats'] = [
-  'STR' => (int)($row['str_score'] ?? 10),
-  'DEX' => (int)($row['dex_score'] ?? 10),
-  'CON' => (int)($row['con_score'] ?? 10),
-  'INT' => (int)($row['int_score'] ?? 10),
-  'WIS' => (int)($row['wis_score'] ?? 10),
-  'CHA' => (int)($row['cha_score'] ?? 10),
-];
-
-$state['saves'] = [
-  'STR' => !empty($row['save_str']),
-  'DEX' => !empty($row['save_dex']),
-  'CON' => !empty($row['save_con']),
-  'INT' => !empty($row['save_int']),
-  'WIS' => !empty($row['save_wis']),
-  'CHA' => !empty($row['save_cha']),
-];
-
-$rs = db()->prepare("SELECT * FROM character_resources WHERE character_id=?");
-$rs->execute([$charId]);
-$r = $rs->fetch() ?: [];
-
-$state['resources'] = [
-  'hp' => [
-    'current' => (int)($r['hp_current'] ?? 10),
-    'max' => (int)($r['hp_max'] ?? 10),
-    'temp' => (int)($r['hp_temp'] ?? 0),
+// --- normalize a few fields for front-end convenience ---
+$out = [
+  'id' => $charId,
+  'access' => [
+    'can_view' => $canView,
+    'can_edit' => $canEdit,
+    'role'     => $role,
   ],
-  'proficiencyBonus' => (int)($r['proficiency_bonus'] ?? 2),
-  'defense' => [
-    'ac' => (int)($r['ac'] ?? 10),
-    'passivePerceptionOverride' => isset($r['passive_perception_override'])
-      ? (int)$r['passive_perception_override']
-      : null,
+  'character' => [
+    'id'            => (int)($ch['id'] ?? 0),
+    'owner_user_id' => (int)($ch['owner_user_id'] ?? 0),
+    'name'          => (string)($ch['name'] ?? ''),
+    'class_name'    => (string)($ch['class_name'] ?? ''),
+    'level'         => (int)($ch['level'] ?? 1),
+    'race'          => (string)($ch['race'] ?? ''),
+    'alignment'     => (string)($ch['alignment'] ?? ''),
+    'background'    => (string)($ch['background'] ?? ''),
+    'xp'            => (string)($ch['xp'] ?? ''),
+    'player_name'   => (string)($ch['player_name'] ?? ''),
+    'avatar_url'    => $ch['avatar_url'],
+    'avatar_data'   => $ch['avatar_data'],
+    'created_at'    => $ch['created_at'] ?? null,
+    'updated_at'    => $ch['updated_at'] ?? null,
   ],
-  // нове:
-  'inspiration' => !empty($r['inspiration']),
-  'speed' => (int)($r['speed'] ?? 30),
-  // custom пропускаємо як ти сказала
-  'custom' => [],
+  'resources' => $res,
+  'stats'     => $stats,
+  'coins'     => $coins,
+  'inventory' => $inventory,
+  'weapons'   => $weapons,
+  'spells'    => $spells,
+  'abilities' => $abilities,
+  'notes'     => $notes,
+  'shared'    => $shared,
 ];
 
-$nt = db()->prepare("SELECT * FROM character_notes WHERE character_id=?");
-$nt->execute([$charId]);
-$n = $nt->fetch() ?: [];
-
-$state['notes'] = [
-  'session' => (string)($n['session_notes'] ?? ''),
-  'quick' => (string)($n['quick_notes'] ?? ''),
-  'backstory' => (string)($n['backstory'] ?? ''),
-];
-
-$cc = db()->prepare("SELECT * FROM character_coins WHERE character_id=?");
-$cc->execute([$charId]);
-$c = $cc->fetch() ?: [];
-$state['coins'] = [
-  'gp' => (int)($c['gp'] ?? 0),
-  'sp' => (int)($c['sp'] ?? 0),
-  'cp' => (int)($c['cp'] ?? 0),
-];
-
-// skills profs (тільки true)
-$state['skillProfs'] = [];
-$sk = db()->prepare("SELECT skill_key FROM character_skill_profs WHERE character_id=?");
-$sk->execute([$charId]);
-foreach ($sk->fetchAll() as $srow) {
-  $state['skillProfs'][(string)$srow['skill_key']] = true;
-}
-
-// proficiencies
-$state['proficiencies'] = ['weapons'=>[], 'tools'=>[], 'armor'=>[], 'languages'=>[], 'transport'=>[]];
-$pf = db()->prepare("SELECT prof_type, value FROM character_proficiencies WHERE character_id=? ORDER BY prof_type, sort_order, id");
-$pf->execute([$charId]);
-foreach ($pf->fetchAll() as $prow) {
-  $t = (string)$prow['prof_type'];
-  $v = (string)$prow['value'];
-  if ($t === 'weapon') $state['proficiencies']['weapons'][] = $v;
-  if ($t === 'tool') $state['proficiencies']['tools'][] = $v;
-  if ($t === 'armor') $state['proficiencies']['armor'][] = $v;
-  if ($t === 'language') $state['proficiencies']['languages'][] = $v;
-  if ($t === 'transport') $state['proficiencies']['transport'][] = $v;
-}
-
-// inventory
-$state['inventory'] = [];
-$inv = db()->prepare("SELECT name,equipped,consumable,qty,charges,icon,description FROM character_inventory WHERE character_id=? ORDER BY sort_order, id");
-$inv->execute([$charId]);
-foreach ($inv->fetchAll() as $irow) {
-  $state['inventory'][] = [
-    'name' => (string)$irow['name'],
-    'equipped' => !empty($irow['equipped']),
-    'consumable' => !empty($irow['consumable']),
-    'qty' => (int)$irow['qty'],
-    'charges' => (int)$irow['charges'],
-    'icon' => (string)$irow['icon'],
-    'description' => (string)$irow['description'],
-  ];
-}
-
-// weapons
-$state['weapons'] = [];
-$wp = db()->prepare("SELECT name,atk,dmg FROM character_weapons WHERE character_id=? ORDER BY sort_order, id");
-$wp->execute([$charId]);
-foreach ($wp->fetchAll() as $wrow) {
-  $state['weapons'][] = [
-    'name' => (string)$wrow['name'],
-    'atk' => (string)$wrow['atk'],
-    'dmg' => (string)$wrow['dmg'],
-  ];
-}
-
-// spells
-$state['spells'] = [];
-$sp = db()->prepare("SELECT spell_uid,name,kind,level,charges,used,description FROM character_spells WHERE character_id=? ORDER BY sort_order, id");
-$sp->execute([$charId]);
-foreach ($sp->fetchAll() as $sprow) {
-  $state['spells'][] = [
-    'id' => (string)$sprow['spell_uid'],
-    'name' => (string)$sprow['name'],
-    'kind' => (string)$sprow['kind'],
-    'level' => (int)$sprow['level'],
-    'charges' => (int)$sprow['charges'],
-    'used' => !empty($sprow['used']),
-    'description' => (string)$sprow['description'],
-  ];
-}
-
-// abilities
-$state['abilities'] = [];
-$ab = db()->prepare("SELECT name,kind,source,description FROM character_abilities WHERE character_id=? ORDER BY sort_order, id");
-$ab->execute([$charId]);
-foreach ($ab->fetchAll() as $arow) {
-  $state['abilities'][] = [
-    'name' => (string)$arow['name'],
-    'kind' => (string)$arow['kind'],
-    'source' => (string)$arow['source'],
-    'description' => (string)$arow['description'],
-  ];
-}
-
-// death saves
-$ds = db()->prepare("SELECT fails,successes FROM character_death_saves WHERE character_id=?");
-$ds->execute([$charId]);
-$d = $ds->fetch() ?: [];
-$state['deathSaves'] = [
-  'fails' => (int)($d['fails'] ?? 0),
-  'successes' => (int)($d['successes'] ?? 0),
-];
-
-// UI/meta можна не віддавати з БД — твій ensureDefaults() їх підставить
-echo json_encode(['ok' => true, 'state' => $state], JSON_UNESCAPED_UNICODE);
+json_ok($out);
 
 
 ======================================================================
 FILE: D:\Projects\games\site-fondry\tabletops_3\api\character_save.php
-MODIFIED: 2026-02-14 21:30:13 | SIZE: 11297 bytes
+MODIFIED: 2026-02-14 22:31:13 | SIZE: 3534 bytes
 ======================================================================
 
 <?php
@@ -2447,295 +2811,112 @@ declare(strict_types=1);
 require_once __DIR__ . '/../inc/auth.php';
 require_once __DIR__ . '/../inc/db.php';
 
+header('Content-Type: application/json; charset=utf-8');
+
 require_login();
 $user = current_user();
-$uid = (int)($user['id'] ?? 0);
+$uid  = (int)($user['id'] ?? 0);
 $role = (string)($user['role'] ?? 'user');
 
-$charId = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-if ($charId <= 0) { http_response_code(400); echo "Missing id"; exit; }
-
-$pdo = db();
-
-// --- auth / access ---
-$stmt = $pdo->prepare("SELECT id, owner_user_id FROM characters WHERE id=?");
-$stmt->execute([$charId]);
-$ch = $stmt->fetch();
-if (!$ch) { http_response_code(404); echo "Not found"; exit; }
-
-if ($role !== 'admin' && (int)$ch['owner_user_id'] !== $uid) {
-  $accSt = $pdo->prepare("SELECT can_edit FROM character_access WHERE character_id=? AND user_id=? LIMIT 1");
-  $accSt->execute([$charId, $uid]);
-  $acc = $accSt->fetch();
-
-  if (!$acc || (int)$acc['can_edit'] !== 1) {
-    http_response_code(403);
-    echo "Forbidden";
-    exit;
-  }
-}
-
-// --- helpers ---
-function post_has(string $k): bool { return array_key_exists($k, $_POST); }
-function post_str(string $k): string { return trim((string)($_POST[$k] ?? '')); }
-function post_int(string $k, int $def=0): int {
-  $v = $_POST[$k] ?? null;
-  if ($v === null || $v === '') return $def;
-  return (int)$v;
-}
-function post_bool(string $k): int { return isset($_POST[$k]) ? 1 : 0; }
-
-$pdo->beginTransaction();
-try {
-  // fetch existing resources to avoid overwriting when field missing
-  $curResSt = $pdo->prepare("SELECT * FROM character_resources WHERE character_id=?");
-  $curResSt->execute([$charId]);
-  $curRes = $curResSt->fetch() ?: [];
-
-  // characters
-  $pdo->prepare("UPDATE characters
-                 SET name=?, class_name=?, level=?, race=?, alignment=?, background=?, xp=?, player_name=?, avatar_url=?, avatar_data=?
-                 WHERE id=?")
-      ->execute([
-        post_str('name'),
-        post_str('class_name'),
-        post_int('level', (int)($ch['level'] ?? 1)),
-        post_str('race'),
-        post_str('alignment'),
-        post_str('background'),
-        post_str('xp'),
-        post_str('player_name'),
-        ($_POST['avatar_url'] ?? null),
-        ($_POST['avatar_data'] ?? null),
-        $charId
-      ]);
-
-  // resources
-  $ppoRaw = ($_POST['passive_perception_override'] ?? '');
-  $ppo = (trim((string)$ppoRaw) === '') ? null : (int)$ppoRaw;
-
-  // IMPORTANT: do not overwrite inspiration/speed if those inputs are absent (disabled/not present)
-  $inspiration = post_has('inspiration') ? post_bool('inspiration') : (int)($curRes['inspiration'] ?? 0);
-  $speed       = post_has('speed') ? post_int('speed', 30) : (int)($curRes['speed'] ?? 30);
-
-  $pdo->prepare("UPDATE character_resources
-                 SET hp_current=?, hp_max=?, hp_temp=?, proficiency_bonus=?, ac=?, passive_perception_override=?, inspiration=?, speed=?
-                 WHERE character_id=?")
-      ->execute([
-        post_int('hp_current', (int)($curRes['hp_current'] ?? 10)),
-        post_int('hp_max', (int)($curRes['hp_max'] ?? 10)),
-        post_int('hp_temp', (int)($curRes['hp_temp'] ?? 0)),
-        post_int('proficiency_bonus', (int)($curRes['proficiency_bonus'] ?? 2)),
-        post_int('ac', (int)($curRes['ac'] ?? 10)),
-        $ppo,
-        $inspiration,
-        $speed,
-        $charId
-      ]);
-
-  // stats + saves
-  $pdo->prepare("UPDATE character_stats
-                 SET str_score=?, dex_score=?, con_score=?, int_score=?, wis_score=?, cha_score=?,
-                     save_str=?, save_dex=?, save_con=?, save_int=?, save_wis=?, save_cha=?
-                 WHERE character_id=?")
-      ->execute([
-        post_int('str_score',10), post_int('dex_score',10), post_int('con_score',10),
-        post_int('int_score',10), post_int('wis_score',10), post_int('cha_score',10),
-        post_bool('save_str'), post_bool('save_dex'), post_bool('save_con'),
-        post_bool('save_int'), post_bool('save_wis'), post_bool('save_cha'),
-        $charId
-      ]);
-
-  // coins
-  $pdo->prepare("UPDATE character_coins SET gp=?, sp=?, cp=? WHERE character_id=?")
-      ->execute([post_int('gp',0), post_int('sp',0), post_int('cp',0), $charId]);
-
-  // deletes
-  $delInv = $_POST['inv_delete'] ?? [];
-  if (is_array($delInv) && $delInv) {
-    $ids = array_values(array_filter(array_map('intval', $delInv), fn($x)=>$x>0));
-    if ($ids) {
-      $in = implode(',', array_fill(0, count($ids), '?'));
-      $args = $ids;
-      $args[] = $charId;
-      $pdo->prepare("DELETE FROM character_inventory WHERE id IN ($in) AND character_id=?")->execute($args);
-    }
-  }
-
-  $delWp = $_POST['wp_delete'] ?? [];
-  if (is_array($delWp) && $delWp) {
-    $ids = array_values(array_filter(array_map('intval', $delWp), fn($x)=>$x>0));
-    if ($ids) {
-      $in = implode(',', array_fill(0, count($ids), '?'));
-      $args = $ids;
-      $args[] = $charId;
-      $pdo->prepare("DELETE FROM character_weapons WHERE id IN ($in) AND character_id=?")->execute($args);
-    }
-  }
-
-  $delSp = $_POST['sp_delete'] ?? [];
-  if (is_array($delSp) && $delSp) {
-    $ids = array_values(array_filter(array_map('intval', $delSp), fn($x)=>$x>0));
-    if ($ids) {
-      $in = implode(',', array_fill(0, count($ids), '?'));
-      $args = $ids;
-      $args[] = $charId;
-      $pdo->prepare("DELETE FROM character_spells WHERE id IN ($in) AND character_id=?")->execute($args);
-    }
-  }
-
-  $delAb = $_POST['ab_delete'] ?? [];
-  if (is_array($delAb) && $delAb) {
-    $ids = array_values(array_filter(array_map('intval', $delAb), fn($x)=>$x>0));
-    if ($ids) {
-      $in = implode(',', array_fill(0, count($ids), '?'));
-      $args = $ids;
-      $args[] = $charId;
-      $pdo->prepare("DELETE FROM character_abilities WHERE id IN ($in) AND character_id=?")->execute($args);
-    }
-  }
-
-  // inventory (update + insert)
-  $inv_id = $_POST['inv_id'] ?? [];
-  $inv_name = $_POST['inv_name'] ?? [];
-  $inv_qty = $_POST['inv_qty'] ?? [];
-  $inv_ch = $_POST['inv_charges'] ?? [];
-  $inv_icon = $_POST['inv_icon'] ?? [];
-  $inv_desc = $_POST['inv_desc'] ?? [];
-
-  foreach ($inv_id as $i => $idRaw) {
-    $id = (int)$idRaw;
-
-    $name = (string)($inv_name[$i] ?? '');
-    $qty  = (int)($inv_qty[$i] ?? 1);
-    $chg  = (int)($inv_ch[$i] ?? 0);
-    $icon = (string)($inv_icon[$i] ?? '');
-    $desc = (string)($inv_desc[$i] ?? '');
-
-    $equipped   = isset($_POST['inv_equipped'][$i]) ? 1 : 0;
-    $consumable = isset($_POST['inv_consumable'][$i]) ? 1 : 0;
-
-    if ($id > 0) {
-      $pdo->prepare("UPDATE character_inventory
-                     SET name=?, equipped=?, consumable=?, qty=?, charges=?, icon=?, description=?
-                     WHERE id=? AND character_id=?")
-          ->execute([$name, $equipped, $consumable, $qty, $chg, $icon, $desc, $id, $charId]);
-    } else {
-      // insert only if something filled
-      $hasData = (trim($name) !== '' || trim($icon) !== '' || trim($desc) !== '' || $qty !== 1 || $chg !== 0 || $equipped || $consumable);
-      if ($hasData) {
-        $pdo->prepare("INSERT INTO character_inventory (character_id, name, equipped, consumable, qty, charges, icon, description, sort_order)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)")
-            ->execute([$charId, $name, $equipped, $consumable, $qty, $chg, $icon, $desc]);
-      }
-    }
-  }
-
-  // weapons (update + insert)
-  $wp_id = $_POST['wp_id'] ?? [];
-  $wp_name = $_POST['wp_name'] ?? [];
-  $wp_atk = $_POST['wp_atk'] ?? [];
-  $wp_dmg = $_POST['wp_dmg'] ?? [];
-
-  foreach ($wp_id as $i => $idRaw) {
-    $id = (int)$idRaw;
-
-    $name = (string)($wp_name[$i] ?? '');
-    $atk  = (string)($wp_atk[$i] ?? '');
-    $dmg  = (string)($wp_dmg[$i] ?? '');
-
-    if ($id > 0) {
-      $pdo->prepare("UPDATE character_weapons SET name=?, atk=?, dmg=? WHERE id=? AND character_id=?")
-          ->execute([$name, $atk, $dmg, $id, $charId]);
-    } else {
-      $hasData = (trim($name) !== '' || trim($atk) !== '' || trim($dmg) !== '');
-      if ($hasData) {
-        $pdo->prepare("INSERT INTO character_weapons (character_id, name, atk, dmg, sort_order)
-                       VALUES (?, ?, ?, ?, 0)")
-            ->execute([$charId, $name, $atk, $dmg]);
-      }
-    }
-  }
-
-  // spells (update + insert)
-  $sp_id = $_POST['sp_id'] ?? [];
-  $sp_uid = $_POST['sp_uid'] ?? [];
-  $sp_name = $_POST['sp_name'] ?? [];
-  $sp_kind = $_POST['sp_kind'] ?? [];
-  $sp_level = $_POST['sp_level'] ?? [];
-  $sp_charges = $_POST['sp_charges'] ?? [];
-  $sp_desc = $_POST['sp_desc'] ?? [];
-  $sp_used = $_POST['sp_used'] ?? []; // array of ids
-  $usedSet = [];
-  if (is_array($sp_used)) foreach ($sp_used as $sid) $usedSet[(int)$sid] = true;
-
-  foreach ($sp_id as $i => $idRaw) {
-    $id = (int)$idRaw;
-
-    $uidStr = (string)($sp_uid[$i] ?? '');
-    $name   = (string)($sp_name[$i] ?? '');
-    $kind   = (($sp_kind[$i] ?? 'spell') === 'cantrip') ? 'cantrip' : 'spell';
-    $lvl    = (int)($sp_level[$i] ?? 0);
-    $chg    = (int)($sp_charges[$i] ?? 0);
-    $desc   = (string)($sp_desc[$i] ?? '');
-
-    if ($id > 0) {
-      $pdo->prepare("UPDATE character_spells
-                     SET spell_uid=?, name=?, kind=?, level=?, charges=?, used=?, description=?
-                     WHERE id=? AND character_id=?")
-          ->execute([
-            $uidStr, $name, $kind, $lvl, $chg,
-            isset($usedSet[$id]) ? 1 : 0,
-            $desc, $id, $charId
-          ]);
-    } else {
-      $hasData = (trim($uidStr) !== '' || trim($name) !== '' || trim($desc) !== '' || $lvl !== 0 || $chg !== 0);
-      if ($hasData) {
-        $pdo->prepare("INSERT INTO character_spells (character_id, spell_uid, name, kind, level, charges, used, description, sort_order)
-                       VALUES (?, ?, ?, ?, ?, ?, 0, ?, 0)")
-            ->execute([$charId, $uidStr, $name, $kind, $lvl, $chg, $desc]);
-      }
-    }
-  }
-
-  // abilities (update + insert)
-  $ab_id = $_POST['ab_id'] ?? [];
-  $ab_name = $_POST['ab_name'] ?? [];
-  $ab_kind = $_POST['ab_kind'] ?? [];
-  $ab_source = $_POST['ab_source'] ?? [];
-  $ab_desc = $_POST['ab_desc'] ?? [];
-
-  foreach ($ab_id as $i => $idRaw) {
-    $id = (int)$idRaw;
-
-    $name = (string)($ab_name[$i] ?? '');
-    $kind = (string)($ab_kind[$i] ?? '');
-    $src  = (string)($ab_source[$i] ?? '');
-    $desc = (string)($ab_desc[$i] ?? '');
-
-    if ($id > 0) {
-      $pdo->prepare("UPDATE character_abilities
-                     SET name=?, kind=?, source=?, description=?
-                     WHERE id=? AND character_id=?")
-          ->execute([$name, $kind, $src, $desc, $id, $charId]);
-    } else {
-      $hasData = (trim($name) !== '' || trim($kind) !== '' || trim($src) !== '' || trim($desc) !== '');
-      if ($hasData) {
-        $pdo->prepare("INSERT INTO character_abilities (character_id, name, kind, source, description, sort_order)
-                       VALUES (?, ?, ?, ?, ?, 0)")
-            ->execute([$charId, $name, $kind, $src, $desc]);
-      }
-    }
-  }
-
-  $pdo->commit();
-  header("Location: /character.php?id=" . $charId);
+$charId = (int)($_POST['id'] ?? 0);
+if ($charId <= 0) {
+  http_response_code(400);
+  echo json_encode(['ok'=>false,'error'=>'Missing id']);
   exit;
+}
 
+$st = db()->prepare("SELECT id, owner_user_id FROM characters WHERE id=?");
+$st->execute([$charId]);
+$ch = $st->fetch();
+if (!$ch) {
+  http_response_code(404);
+  echo json_encode(['ok'=>false,'error'=>'Character not found']);
+  exit;
+}
+
+$canEdit = false;
+if ($role === 'admin' || (int)$ch['owner_user_id'] === $uid) {
+  $canEdit = true;
+} else {
+  $acc = db()->prepare("SELECT can_edit FROM character_access WHERE character_id=? AND user_id=? LIMIT 1");
+  $acc->execute([$charId, $uid]);
+  $r = $acc->fetch();
+  $canEdit = (bool)($r && (int)($r['can_edit'] ?? 0) === 1);
+}
+
+if (!$canEdit) {
+  http_response_code(403);
+  echo json_encode(['ok'=>false,'error'=>'Forbidden']);
+  exit;
+}
+
+$skillsJson = (string)($_POST['skills_json'] ?? '{}');
+$profsJson  = (string)($_POST['profs_json'] ?? '{}');
+
+$skills = json_decode($skillsJson, true);
+$profs  = json_decode($profsJson, true);
+
+if (!is_array($skills)) $skills = [];
+if (!is_array($profs))  $profs  = [];
+
+$allowedSkillCodes = [
+  'acrobatics','animal','arcana','athletics','deception','history','insight','intimidation','investigation',
+  'medicine','nature','perception','performance','persuasion','religion','sleight','stealth','survival'
+];
+
+$allowedProfTypes = ['weapons','armor','tools','languages','vehicles'];
+
+$db = db();
+$db->beginTransaction();
+
+try {
+  // Skills: replace-all for character
+  $db->prepare("DELETE FROM character_skills WHERE character_id=?")->execute([$charId]);
+
+  $insSkill = $db->prepare("INSERT INTO character_skills (character_id, skill_code, proficiency_level, bonus_override)
+                            VALUES (?,?,?,?)");
+  foreach ($skills as $code => $row) {
+    $code = trim((string)$code);
+    if ($code === '' || !in_array($code, $allowedSkillCodes, true)) continue;
+
+    $prof = 0;
+    $ov = null;
+
+    if (is_array($row)) {
+      $prof = (int)($row['proficiency_level'] ?? 0);
+      if ($prof < 0) $prof = 0;
+      if ($prof > 2) $prof = 2;
+
+      if (array_key_exists('bonus_override', $row) && $row['bonus_override'] !== null && $row['bonus_override'] !== '') {
+        $ov = (int)$row['bonus_override'];
+      }
+    }
+
+    $insSkill->execute([$charId, $code, $prof, $ov]);
+  }
+
+  // Profs: replace-all for character
+  $db->prepare("DELETE FROM character_proficiencies WHERE character_id=?")->execute([$charId]);
+
+  $insProf = $db->prepare("INSERT INTO character_proficiencies (character_id, prof_type, name)
+                           VALUES (?,?,?)");
+
+  foreach ($allowedProfTypes as $type) {
+    if (!isset($profs[$type]) || !is_array($profs[$type])) continue;
+    foreach ($profs[$type] as $name) {
+      $name = trim((string)$name);
+      if ($name === '') continue;
+      if (mb_strlen($name) > 120) $name = mb_substr($name, 0, 120);
+      $insProf->execute([$charId, $type, $name]);
+    }
+  }
+
+  $db->commit();
+  echo json_encode(['ok'=>true]);
 } catch (Throwable $e) {
-  $pdo->rollBack();
+  $db->rollBack();
   http_response_code(500);
-  echo "Save failed: " . htmlspecialchars($e->getMessage());
+  echo json_encode(['ok'=>false,'error'=>'DB error']);
 }
 
 
@@ -2892,7 +3073,7 @@ function logout_user(): void {
 
 ======================================================================
 FILE: D:\Projects\games\site-fondry\tabletops_3\inc\char.css
-MODIFIED: 2026-02-14 21:07:35 | SIZE: 4949 bytes
+MODIFIED: 2026-02-14 23:14:49 | SIZE: 8891 bytes
 ======================================================================
 
 /* ================================
@@ -3166,7 +3347,214 @@ MODIFIED: 2026-02-14 21:07:35 | SIZE: 4949 bytes
     color: #777;
     cursor: not-allowed;
   }
-  
+
+/* ================================
+   SKILLS + PROFICIENCIES
+================================ */
+
+.smallBtn {
+  background: #2b2c36;
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.smallBtn:hover { opacity: .9; }
+
+.profBlock {
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.profHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.tagList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag {
+  background: #2b2c36;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tag button {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.tag button:hover { color: var(--text); }
+
+.skillRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 8px;
+}
+
+.skillName { color: var(--text); font-size: 14px; }
+.skillMeta { color: var(--muted); font-size: 12px; }
+
+/* ================================
+   MISSING UI STYLES (used in character.php)
+================================ */
+
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+
+.hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 14px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.btn.primary { background: var(--accent); color: #fff; }
+.btn.secondary { background: #2b2c36; color: var(--text); border-color: var(--border); }
+.btn.danger { background: var(--danger); color: #fff; }
+
+.btn:disabled,
+.smallBtn:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #2b2c36;
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.tabs button {
+  background: #2b2c36;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.tabs button.active {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+}
+
+.sectionTitle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.avatarBox {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.avatarPreview {
+  width: 92px;
+  height: 92px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--panel-soft);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.avatarPreview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.toast {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  background: #2b2c36;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 12px;
+  border-radius: 12px;
+  z-index: 999;
+  box-shadow: 0 10px 30px rgba(0,0,0,.35);
+}
+.collapsible .collapseToggle{
+  cursor:pointer;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+
+.collapsible .collapseToggle::after{
+  content:"▼";
+  font-size:12px;
+  opacity:.6;
+  transition:.2s;
+}
+
+.collapsible.open .collapseToggle::after{
+  transform:rotate(-180deg);
+}
+
 
 ======================================================================
 FILE: D:\Projects\games\site-fondry\tabletops_3\inc\config.php

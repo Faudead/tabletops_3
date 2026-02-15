@@ -16,6 +16,8 @@ $stmt = db()->prepare("SELECT * FROM characters WHERE id=?");
 $stmt->execute([$charId]);
 $ch = $stmt->fetch();
 if (!$ch) { http_response_code(404); echo "Not found"; exit; }
+$ch['avatar_url'] = $ch['avatar_url'] ?? null;
+$ch['avatar_data'] = $ch['avatar_data'] ?? null;
 
 // access: admin OR owner OR shared
 $canEdit = false;
@@ -49,6 +51,42 @@ $rs = db()->prepare("SELECT * FROM character_resources WHERE character_id=?");
 $rs->execute([$charId]);
 $res = $rs->fetch() ?: [];
 
+
+
+// Skills
+$skillsSt = db()->prepare("SELECT skill_code, proficiency_level, bonus_override
+                           FROM character_skills
+                           WHERE character_id=?");
+$skillsSt->execute([$charId]);
+$skillsRows = $skillsSt->fetchAll() ?: [];
+$skillsMap = [];
+foreach ($skillsRows as $r) {
+  $skillsMap[(string)$r['skill_code']] = [
+    'proficiency_level' => (int)($r['proficiency_level'] ?? 0),
+    'bonus_override' => ($r['bonus_override'] === null ? null : (int)$r['bonus_override']),
+  ];
+}
+
+// Proficiencies
+$profsSt = db()->prepare("SELECT prof_type, name
+                          FROM character_proficiencies
+                          WHERE character_id=?
+                          ORDER BY prof_type, name");
+$profsSt->execute([$charId]);
+$profsRows = $profsSt->fetchAll() ?: [];
+$profs = [
+  'weapons' => [],
+  'armor' => [],
+  'tools' => [],
+  'languages' => [],
+  'vehicles' => [],
+];
+foreach ($profsRows as $r) {
+  $type = (string)($r['prof_type'] ?? '');
+  $name = trim((string)($r['name'] ?? ''));
+  if ($name === '' || !isset($profs[$type])) continue;
+  $profs[$type][] = $name;
+}
 $cc = db()->prepare("SELECT * FROM character_coins WHERE character_id=?");
 $cc->execute([$charId]);
 $coins = $cc->fetch() ?: [];
@@ -242,33 +280,20 @@ if (!empty($ch['avatar_data'])) {
     <aside class="sidebar-left">
       <section class="card">
   <h2>Avatar</h2>
-  <div class="avatarBox" style="margin-bottom:10px;">
-          <div class="avatarPreview" id="avatarPreview">
-            <?php if ($avatarSrc): ?>
-              <img src="<?= h($avatarSrc) ?>" alt="avatar">
-            <?php else: ?>
-              <span class="muted">No avatar</span>
-            <?php endif; ?>
-          </div>
+  <div class="avatarBox" style="margin-bottom:10px; display:flex; align-items:center;">
+  <div style="margin-right:16px;">
+  <div id="avatarContainer" class="avatarContainer">
+  <img
+    id="avatarPreview"
+    src="..."
+    alt="avatar"
+    style="display:block;"
+  >
+  </div>
+  <input type="file" id="avatarFile" accept="image/*" hidden <?= $canEdit ? '' : 'disabled' ?>>
+  <input type="hidden" id="avatarData" name="avatar_data" value="<?= h($ch['avatar_data'] ?? '') ?>">
 
-          <div style="flex:1">
-            <label>Avatar URL
-              <input type="url" name="avatar_url" id="avatarUrl" value="<?= h($ch['avatar_url']) ?>" placeholder="https://..." <?= $canEdit ? '' : 'disabled' ?>>
-            </label>
 
-            <label>Avatar file (save into DB as base64)
-              <input type="file" id="avatarFile" accept="image/*" <?= $canEdit ? '' : 'disabled' ?>>
-            </label>
-
-            <input type="hidden" name="avatar_data" id="avatarData" value="<?= h($ch['avatar_data']) ?>">
-            <div class="row">
-              <button class="btn secondary" type="button" id="btnClearAvatar" <?= $canEdit ? '' : 'disabled' ?>>Clear</button>
-            </div>
-          </div>
-        </div>
-  <div class="hint" style="font-size:12px; color:var(--muted); margin-top:10px;">
-          Зображення можна зберігати всередині БД як data (base64). Не вантаж гігантські файли 🙂
-        </div>
 </section>
 
       <section class="card" style="margin-top: 12px;">
@@ -293,7 +318,7 @@ if (!empty($ch['avatar_data'])) {
       <section class="card">
 <div class="tabs">
           <button type="button" class="active" data-tab="sheet">Sheet</button>
-          <button type="button" data-tab="combat">Combat</button>
+          <button type="button" data-tab="weapons">Weapons</button>
           <button type="button" data-tab="inventory">Inventory</button>
           <button type="button" data-tab="spells">Spells</button>
           <button type="button" data-tab="abilities">Abilities</button>
@@ -373,93 +398,22 @@ if (!empty($ch['avatar_data'])) {
               </div>
 
             </section>
-
-          </div>
-
-          
-
-<section class="card collapsible open" data-collapse="identity" style="margin-top: 12px;">
-            <div class="collapseToggle">
-              <h2 style="margin:0;">Identity</h2>
-              <span class="muted">toggle</span>
-            </div>
-            <div class="cardBody">
-
-              <div class="grid2">
-                <div>
-                  <label>Ім'я гравця
-                    <input id="playerName" name="player_name" value="<?= h($ch['player_name']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-                  </label>
-                  <label>Раса
-                    <input id="race" name="race" value="<?= h($ch['race']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-                  </label>
-                  <label>Клас
-                    <input id="className" name="class_name" value="<?= h($ch['class_name']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-                  </label>
-                  <label>Рівень
-                    <input id="level" type="number" min="1" max="20" name="level" value="<?= (int)($ch['level'] ?? 1) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-                  </label>
+            <section class="card collapsible open" data-collapse="skills">
+                <div class="collapseToggle">
+                <h2 style="margin:0;">Skills</h2>
+                <span class="muted">toggle</span>
                 </div>
-
-                <div>
-                  <label>Світогляд
-                    <input id="alignment" name="alignment" value="<?= h($ch['alignment']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-                  </label>
-                  <div class="grid2">
-                    <label>Передісторія
-                      <input id="background" name="background" value="<?= h($ch['background']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-                    </label>
-                    <label>Очки досвіду
-                      <input id="xp" name="xp" value="<?= h($ch['xp']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-                    </label>
-                  </div>
-
-                  <div class="grid2">
-                    <label>Риси характеру
-                      <textarea id="traits" name="traits" rows="4" <?= $canEdit ? '' : 'disabled' ?>><?= h($notes["traits"] ?? "") ?></textarea>
-                    </label>
-                    <label>Ідеали
-                      <textarea id="ideals" name="ideals" rows="4" <?= $canEdit ? '' : 'disabled' ?>><?= h($notes["ideals"] ?? "") ?></textarea>
-                    </label>
-
-                    <label>Прив'язаності
-                      <textarea id="bonds" name="bonds" rows="4" <?= $canEdit ? '' : 'disabled' ?>><?= h($notes["bonds"] ?? "") ?></textarea>
-                    </label>
-                    <label>Слабкість
-                      <textarea id="flaws" name="flaws" rows="4" <?= $canEdit ? '' : 'disabled' ?>><?= h($notes["flaws"] ?? "") ?></textarea>
-                    </label>
-                  </div>
-
-                  <label>Backstory
-                    <textarea id="backstory" name="backstory" rows="10" <?= $canEdit ? '' : 'disabled' ?>><?= h($notes["backstory"] ?? "") ?></textarea>
-                  </label>
-
+                <div class="cardBody">
+                <div class="hint">Total = stat mod + PB (якщо proficient).</div>
+                <div id="skillsList"></div>
                 </div>
-              </div>
-
-            </div>
-          </section>
-
-          <section class="card collapsible" data-collapse="proficiencies">
-            <div class="collapseToggle">
-              <h2 style="margin:0;">Proficiencies</h2>
-              <span class="muted">toggle</span>
-            </div>
-            <div class="cardBody">
-              <div class="hint">Плейсхолдер — якщо захочеш, додамо окремі таблиці/поля.</div>
-            </div>
-          </section>
-
-        </section>
-
-        <!-- TAB: COMBAT -->
-        <section data-panel="combat" hidden>
-          <div class="grid2">
-            <section class="card">
-              <h2>Combat notes</h2>
-              <div class="hint">Поки що — базові поля в Resources.</div>
             </section>
+          </div>
+</section>
 
+<!-- TAB: WEAPONS -->
+        <section data-panel="weapons" hidden>
+          <div class="grid2">
             <section class="card">
               <h2>Weapons</h2>
               <div class="sectionTitle">
@@ -488,8 +442,11 @@ if (!empty($ch['avatar_data'])) {
             </section>
           </div>
         </section>
+          </div>
+        </section>
 
         <!-- TAB: INVENTORY -->
+
         <section data-panel="inventory" hidden>
           <section class="card">
             <div class="sectionTitle">
@@ -578,148 +535,134 @@ if (!empty($ch['avatar_data'])) {
           </section>
         </section>
 </section>
-    </section>
+ </section>
 
     <aside class="sidebar-right">
-      <section class="card">
-<h2>Basics</h2>
+<section class="card collapsible open" data-collapse="identity" style="margin-top: 12px;">
+            <div class="collapseToggle">
+              <h2 style="margin:0;">Identity</h2>
+              <span class="muted">toggle</span>
+            </div>
+            <div class="cardBody">
 
-        
+              <div class="grid2">
+                <div>
+                  <label>Ім'я гравця
+                    <input id="playerName" name="player_name" value="<?= h($ch['player_name']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+                  </label>
+                  <label>Раса
+                    <input id="race" name="race" value="<?= h($ch['race']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+                  </label>
+                  <label>Клас
+                    <input id="className" name="class_name" value="<?= h($ch['class_name']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+                  </label>
+                  <label>Рівень
+                    <input id="level" type="number" min="1" max="20" name="level" value="<?= (int)($ch['level'] ?? 1) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+                  </label>
+                </div>
 
-        <div class="row">
-          <label>Name
-            <input name="name" value="<?= h($ch['name']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-          </label>
-          <label>Player
-            <input name="player_name" value="<?= h($ch['player_name']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-          </label>
-        </div>
+                <div>
+                  <label>Світогляд
+                    <input id="alignment" name="alignment" value="<?= h($ch['alignment']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+                  </label>
+                  <div class="grid2">
+                    <label>Передісторія
+                      <input id="background" name="background" value="<?= h($ch['background']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+                    </label>
+                    <label>Очки досвіду
+                      <input id="xp" name="xp" value="<?= h($ch['xp']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
+                    </label>
+                  </div>
 
-        <div class="row">
-          <label>Race
-            <input name="race" value="<?= h($ch['race']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-          </label>
-          <label>Class
-            <input name="class_name" value="<?= h($ch['class_name']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-          </label>
-        </div>
+                  <div class="grid2">
+                    <label>Риси характеру
+                      <textarea id="traits" name="traits" rows="4" <?= $canEdit ? '' : 'disabled' ?>><?= h($notes["traits"] ?? "") ?></textarea>
+                    </label>
+                    <label>Ідеали
+                      <textarea id="ideals" name="ideals" rows="4" <?= $canEdit ? '' : 'disabled' ?>><?= h($notes["ideals"] ?? "") ?></textarea>
+                    </label>
 
-        <div class="row">
-          <label>Level
-            <input type="number" min="1" max="20" name="level" value="<?= (int)($ch['level'] ?? 1) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-          </label>
-          <label>Alignment
-            <input name="alignment" value="<?= h($ch['alignment']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-          </label>
-        </div>
+                    <label>Прив'язаності
+                      <textarea id="bonds" name="bonds" rows="4" <?= $canEdit ? '' : 'disabled' ?>><?= h($notes["bonds"] ?? "") ?></textarea>
+                    </label>
+                    <label>Слабкість
+                      <textarea id="flaws" name="flaws" rows="4" <?= $canEdit ? '' : 'disabled' ?>><?= h($notes["flaws"] ?? "") ?></textarea>
+                    </label>
+                  </div>
 
-        <div class="row">
-          <label>Background
-            <input name="background" value="<?= h($ch['background']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-          </label>
-          <label>XP
-            <input name="xp" value="<?= h($ch['xp']) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-          </label>
-        </div>
+                  <label>Backstory
+                    <textarea id="backstory" name="backstory" rows="10" <?= $canEdit ? '' : 'disabled' ?>><?= h($notes["backstory"] ?? "") ?></textarea>
+                  </label>
 
-        <div class="row">
-          <label>Proficiency Bonus
-            <input type="number" min="0" max="20" name="proficiency_bonus" value="<?= (int)($res['proficiency_bonus'] ?? 2) ?>" <?= $canEdit ? '' : 'disabled' ?>>
-          </label>
-        </div>
-
-        <?php if ($role === 'admin'): ?>
-        <hr style="border:0;border-top:1px solid rgba(255,255,255,.10); margin: 12px 0;">
-        <h2>Shared access</h2>
-        <div class="hint" style="margin-bottom:8px;">Показує, кому виданий доступ через character_access.</div>
-        <div class="list">
-          <?php if (!$shared): ?>
-            <div class="muted small">Немає share-записів.</div>
-          <?php else: ?>
-            <?php foreach ($shared as $s): ?>
-              <div class="item">
-                <div class="itemHead">
-                  <div><b><?= h($s['username'] ?? ('#'.$s['user_id'])) ?></b></div>
-                  <div class="pill"><?= ((int)$s['can_edit'] === 1) ? 'edit' : 'view' ?></div>
                 </div>
               </div>
-            <?php endforeach; ?>
-          <?php endif; ?>
-        </div>
-        <?php endif; ?>
+
+            </div>
+          </section>
+
+<section class="card collapsible open" data-collapse="profs" style="margin-top: 12px;">
+  <div class="collapseToggle">
+    <h2 style="margin:0;">Proficiencies</h2>
+    <span class="muted">toggle</span>
+  </div>
+
+  <div class="cardBody">
+
+    <div class="profBlock">
+      <div class="profHead">
+        <span>Weapons</span>
+        <button class="smallBtn" type="button" id="addProfWeapon" <?= $canEdit ? '' : 'disabled' ?>>+ Add</button>
+      </div>
+      <div id="profWeapons"></div>
+    </div>
+
+    <div class="profBlock">
+      <div class="profHead">
+        <span>Armor</span>
+        <button class="smallBtn" type="button" id="addProfArmor" <?= $canEdit ? '' : 'disabled' ?>>+ Add</button>
+      </div>
+      <div id="profArmor"></div>
+    </div>
+
+    <div class="profBlock">
+      <div class="profHead">
+        <span>Tools</span>
+        <button class="smallBtn" type="button" id="addProfTools" <?= $canEdit ? '' : 'disabled' ?>>+ Add</button>
+      </div>
+      <div id="profTools"></div>
+    </div>
+
+    <div class="profBlock">
+      <div class="profHead">
+        <span>Languages</span>
+        <button class="smallBtn" type="button" id="addProfLang" <?= $canEdit ? '' : 'disabled' ?>>+ Add</button>
+      </div>
+      <div id="profLang"></div>
+    </div>
+
+    <div class="profBlock">
+      <div class="profHead">
+        <span>Vehicles</span>
+        <button class="smallBtn" type="button" id="addProfVehicle" <?= $canEdit ? '' : 'disabled' ?>>+ Add</button>
+      </div>
+      <div id="profVehicle"></div>
+    </div>
+
+  </div>
 </section>
-
-
-      <section class="card collapsible" data-collapse="skills">
-        <div class="collapseToggle">
-          <h2 style="margin:0;">Skills</h2>
-          <span class="muted">toggle</span>
-        </div>
-        <div class="cardBody">
-          <div class="hint">Total = stat mod + PB (якщо proficient).</div>
-          <div id="skillsList"></div>
-        </div>
-      </section>
-
-
-      <section class="card collapsible" data-collapse="proficiencies">
-        <div class="collapseToggle">
-          <h2 style="margin:0;">Proficiencies</h2>
-          <span class="muted">toggle</span>
-        </div>
-        <div class="cardBody">
-          <div class="profBlock">
-            <div class="profHead">
-              <span>Weapons</span>
-              <button type="button" class="smallBtn" id="addProfWeapon" <?= $canEdit ? '' : 'disabled' ?>>+ Add</button>
-            </div>
-            <div id="profWeapons"></div>
-          </div>
-
-          <div class="profBlock">
-            <div class="profHead">
-              <span>Armor</span>
-              <button type="button" class="smallBtn" id="addProfArmor" <?= $canEdit ? '' : 'disabled' ?>>+ Add</button>
-            </div>
-            <div id="profArmor"></div>
-          </div>
-
-          <div class="profBlock">
-            <div class="profHead">
-              <span>Tools</span>
-              <button type="button" class="smallBtn" id="addProfTools" <?= $canEdit ? '' : 'disabled' ?>>+ Add</button>
-            </div>
-            <div id="profTools"></div>
-          </div>
-
-          <div class="profBlock">
-            <div class="profHead">
-              <span>Languages</span>
-              <button type="button" class="smallBtn" id="addProfLang" <?= $canEdit ? '' : 'disabled' ?>>+ Add</button>
-            </div>
-            <div id="profLang"></div>
-          </div>
-
-          <div class="profBlock">
-            <div class="profHead">
-              <span>Vehicles / Transport</span>
-              <button type="button" class="smallBtn" id="addProfVehicle" <?= $canEdit ? '' : 'disabled' ?>>+ Add</button>
-            </div>
-            <div id="profVehicle"></div>
-          </div>
-        </div>
-      </section>
-
-    </aside>
-
-  </main>
+</aside>
+</main>
 </form>
 
 <div class="toast" id="toast"></div>
 
+
 <script>
 (() => {
   const canEdit = <?= $canEdit ? 'true' : 'false' ?>;
+  const charId = <?= (int)$charId ?>;
+  const initialSkills = <?= json_encode($skillsMap, JSON_UNESCAPED_UNICODE) ?>;
+  const initialProfs = <?= json_encode($profs, JSON_UNESCAPED_UNICODE) ?>;
 
   const toast = (msg) => {
     const el = document.getElementById('toast');
@@ -747,48 +690,75 @@ if (!empty($ch['avatar_data'])) {
     t.addEventListener('click', () => card.classList.toggle('open'));
   });
 
-  // Avatar file -> base64
-  const avatarFile = document.getElementById('avatarFile');
-  const avatarData = document.getElementById('avatarData');
-  const avatarUrl  = document.getElementById('avatarUrl');
-  const preview    = document.getElementById('avatarPreview');
-  const btnClear   = document.getElementById('btnClearAvatar');
+// ========================
+// AVATAR SYSTEM
+// ========================
 
-  const setPreview = (src) => {
-    preview.innerHTML = src ? `<img src="${src}" alt="avatar">` : `<span class="muted">No avatar</span>`;
+const avatarContainer = document.getElementById('avatarContainer');
+const avatarImg = document.getElementById('avatarPreview');
+const avatarFile = document.getElementById('avatarFile');
+const avatarData = document.getElementById('avatarData');
+
+if (canEdit && avatarContainer && avatarFile && avatarImg) {
+
+  // --- helper: convert file to base64
+  const fileToBase64 = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.readAsDataURL(file);
+    });
   };
 
-  if (avatarFile && canEdit) {
-    avatarFile.addEventListener('change', async (e) => {
-      const f = e.target.files && e.target.files[0];
-      if (!f) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        const src = String(reader.result || '');
-        avatarData.value = src;
-        if (avatarUrl) avatarUrl.value = '';
-        setPreview(src);
-      };
-      reader.readAsDataURL(f);
-    });
-  }
 
-  if (avatarUrl && canEdit) {
-    avatarUrl.addEventListener('input', () => {
-      const v = avatarUrl.value.trim();
-      if (v) avatarData.value = '';
-      setPreview(v || avatarData.value);
-    });
-  }
 
-  if (btnClear && canEdit) {
-    btnClear.addEventListener('click', () => {
-      if (avatarFile) avatarFile.value = '';
-      if (avatarUrl) avatarUrl.value = '';
-      if (avatarData) avatarData.value = '';
-      setPreview('');
-    });
-  }
+
+  avatarImg.addEventListener('load', adjustContainer);
+  if (avatarImg.complete) adjustContainer();
+
+  // --- click → open file dialog
+  avatarContainer.addEventListener('click', () => {
+    avatarFile.click();
+  });
+
+  // --- file selected
+  avatarFile.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast('Only images allowed');
+      return;
+    }
+
+    const base64 = await fileToBase64(file);
+    avatarData.value = base64;
+    avatarImg.src = base64;
+  });
+
+  // --- paste from clipboard
+  document.addEventListener('paste', async (e) => {
+    if (!document.activeElement || !avatarContainer.contains(document.activeElement)) return;
+
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (!file) continue;
+
+        const base64 = await fileToBase64(file);
+        avatarData.value = base64;
+        avatarImg.src = base64;
+        toast('Image pasted');
+        break;
+      }
+    }
+  });
+
+}
+
 
   // Dynamic lists helpers
   const q = (sel) => document.querySelector(sel);
@@ -916,7 +886,216 @@ if (!empty($ch['avatar_data'])) {
   });
   if (btnAddAbility && canEdit) btnAddAbility.addEventListener('click', addAbilityCard);
 
-  // Save
+  // ===== Skills + Proficiencies =====
+  const SKILLS = [
+    {code:'acrobatics',   name:'Acrobatics',      ability:'dex'},
+    {code:'animal',       name:'Animal Handling', ability:'wis'},
+    {code:'arcana',       name:'Arcana',          ability:'int'},
+    {code:'athletics',    name:'Athletics',       ability:'str'},
+    {code:'deception',    name:'Deception',       ability:'cha'},
+    {code:'history',      name:'History',         ability:'int'},
+    {code:'insight',      name:'Insight',         ability:'wis'},
+    {code:'intimidation', name:'Intimidation',    ability:'cha'},
+    {code:'investigation',name:'Investigation',   ability:'int'},
+    {code:'medicine',     name:'Medicine',        ability:'wis'},
+    {code:'nature',       name:'Nature',          ability:'int'},
+    {code:'perception',   name:'Perception',      ability:'wis'},
+    {code:'performance',  name:'Performance',     ability:'cha'},
+    {code:'persuasion',   name:'Persuasion',      ability:'cha'},
+    {code:'religion',     name:'Religion',        ability:'int'},
+    {code:'sleight',      name:'Sleight of Hand', ability:'dex'},
+    {code:'stealth',      name:'Stealth',         ability:'dex'},
+    {code:'survival',     name:'Survival',        ability:'wis'},
+  ];
+
+  const state = {
+    skills: JSON.parse(JSON.stringify(initialSkills || {})),
+    profs:  JSON.parse(JSON.stringify(initialProfs || {weapons:[],armor:[],tools:[],languages:[],vehicles:[]})),
+  };
+
+  const getLevel = () => {
+    const el = document.querySelector('input[name="level"]');
+    const v = el ? parseInt(el.value || '1', 10) : 1;
+    return Number.isFinite(v) ? Math.min(20, Math.max(1, v)) : 1;
+  };
+  const getPB = () => 2 + Math.floor((getLevel() - 1) / 4);
+
+  const getStatScore = (k) => {
+    const el = document.querySelector(`input[name="stat_${k}"]`);
+    const v = el ? parseInt(el.value || '10', 10) : 10;
+    return Number.isFinite(v) ? v : 10;
+  };
+  const statMod = (score) => Math.floor((score - 10) / 2);
+  const fmtMod = (n) => (n >= 0 ? `+${n}` : `${n}`);
+
+  const computeSkillTotal = (skillCode) => {
+    const def = SKILLS.find(s => s.code === skillCode);
+    if (!def) return 0;
+
+    const mod = statMod(getStatScore(def.ability));
+    const row = state.skills[skillCode] || {proficiency_level:0, bonus_override:null};
+
+    const override = row.bonus_override;
+    if (override !== null && override !== undefined && override !== '') {
+      const ov = parseInt(override, 10);
+      if (Number.isFinite(ov)) return ov;
+    }
+
+    const prof = parseInt(row.proficiency_level || 0, 10);
+    const pb = getPB();
+    const pbPart = prof === 2 ? (2 * pb) : (prof === 1 ? pb : 0);
+    return mod + pbPart;
+  };
+
+  const renderSkills = () => {
+    const root = document.getElementById('skillsList');
+    if (!root) return;
+    root.innerHTML = '';
+
+    SKILLS.forEach(s => {
+      const row = state.skills[s.code] || {proficiency_level:0, bonus_override:null};
+      const total = computeSkillTotal(s.code);
+
+      const wrap = document.createElement('div');
+      wrap.className = 'skillRow';
+
+      const left = document.createElement('div');
+      left.innerHTML = `<div class="skillName"><b>${s.name}</b> <span class="skillMeta">(${s.ability.toUpperCase()})</span></div>`;
+
+      const right = document.createElement('div');
+      right.className = 'row-inline';
+
+      if (canEdit) {
+        const sel = document.createElement('select');
+        sel.innerHTML = `
+          <option value="0">—</option>
+          <option value="1">Prof</option>
+          <option value="2">Exp</option>
+        `;
+        sel.value = String(row.proficiency_level ?? 0);
+        sel.addEventListener('change', () => {
+          state.skills[s.code] = state.skills[s.code] || {};
+          state.skills[s.code].proficiency_level = parseInt(sel.value, 10) || 0;
+          renderSkills();
+        });
+
+        const ov = document.createElement('input');
+        ov.type = 'number';
+        ov.style.width = '76px';
+        ov.placeholder = 'auto';
+        ov.value = (row.bonus_override === null || row.bonus_override === undefined) ? '' : String(row.bonus_override);
+        ov.addEventListener('input', () => {
+          state.skills[s.code] = state.skills[s.code] || {};
+          const v = ov.value.trim();
+          state.skills[s.code].bonus_override = (v === '' ? null : parseInt(v, 10));
+          renderSkills();
+        });
+
+        right.appendChild(sel);
+        right.appendChild(ov);
+      }
+
+      const pill = document.createElement('span');
+      pill.className = 'pill';
+      pill.textContent = fmtMod(total);
+
+      right.appendChild(pill);
+
+      wrap.appendChild(left);
+      wrap.appendChild(right);
+      root.appendChild(wrap);
+    });
+  };
+
+  const renderProfType = (type, containerId) => {
+    const root = document.getElementById(containerId);
+    if (!root) return;
+
+    const list = state.profs[type] || [];
+    root.innerHTML = '';
+    const tagList = document.createElement('div');
+    tagList.className = 'tagList';
+
+    list.forEach((name, idx) => {
+      const tag = document.createElement('span');
+      tag.className = 'tag';
+      tag.appendChild(document.createTextNode(name));
+
+      if (canEdit) {
+        const x = document.createElement('button');
+        x.type = 'button';
+        x.textContent = '×';
+        x.title = 'Remove';
+        x.addEventListener('click', () => {
+          state.profs[type].splice(idx, 1);
+          renderProfs();
+        });
+        tag.appendChild(x);
+      }
+
+      tagList.appendChild(tag);
+    });
+
+    root.appendChild(tagList);
+  };
+
+  const renderProfs = () => {
+    renderProfType('weapons','profWeapons');
+    renderProfType('armor','profArmor');
+    renderProfType('tools','profTools');
+    renderProfType('languages','profLang');
+    renderProfType('vehicles','profVehicle');
+  };
+
+  const addProf = (type) => {
+    if (!canEdit) return;
+    const name = prompt('Add proficiency:');
+    if (!name) return;
+    const clean = name.trim();
+    if (!clean) return;
+    state.profs[type] = state.profs[type] || [];
+    if (!state.profs[type].includes(clean)) state.profs[type].push(clean);
+    state.profs[type].sort((a,b)=>a.localeCompare(b));
+    renderProfs();
+  };
+
+  const bindProfButtons = () => {
+    const map = [
+      ['addProfWeapon','weapons'],
+      ['addProfArmor','armor'],
+      ['addProfTools','tools'],
+      ['addProfLang','languages'],
+      ['addProfVehicle','vehicles'],
+    ];
+    map.forEach(([id,type]) => {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+      btn.addEventListener('click', () => addProf(type));
+    });
+  };
+
+  const saveExtras = async () => {
+    const fd = new FormData();
+    fd.append('id', String(charId));
+    fd.append('skills_json', JSON.stringify(state.skills || {}));
+    fd.append('profs_json', JSON.stringify(state.profs || {}));
+
+    const res = await fetch('/api/character_save.php', { method:'POST', body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) throw new Error(data.error || 'Extras save failed');
+  };
+
+  // Recompute totals when stats/level change
+  ['str','dex','con','int','wis','cha'].forEach(k => {
+    document.querySelector(`input[name="stat_${k}"]`)?.addEventListener('input', renderSkills);
+  });
+  document.querySelector('input[name="level"]')?.addEventListener('input', renderSkills);
+
+  renderSkills();
+  renderProfs();
+  bindProfButtons();
+
+// Save
   const btnSave = q('#btnSave');
   const form = q('#charForm');
 
@@ -932,6 +1111,7 @@ if (!empty($ch['avatar_data'])) {
         if (!res.ok || data.ok === false) {
           toast(data.error || 'Save failed');
         } else {
+          try { await saveExtras(); } catch(e){ toast(e.message || 'Extras save failed'); }
           toast('Saved');
         }
       } catch (e) {
@@ -963,6 +1143,73 @@ if (!empty($ch['avatar_data'])) {
   }
 
 })();
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+  // -----------------------
+  // TABS
+  // -----------------------
+  const tabButtons = document.querySelectorAll('.tabs button');
+  const panels = document.querySelectorAll('[data-panel]');
+
+  tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.tab;
+
+      // активна кнопка
+      tabButtons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      // показати потрібну панель
+      panels.forEach(panel => {
+        if (panel.dataset.panel === target) {
+          panel.hidden = false;
+        } else {
+          panel.hidden = true;
+        }
+      });
+    });
+  });
+
+});
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+  const collapsibles = document.querySelectorAll('.collapsible');
+
+  collapsibles.forEach(card => {
+    const toggle = card.querySelector('.collapseToggle');
+    const body = card.querySelector('.cardBody');
+
+    if (!toggle || !body) return;
+
+    const key = 'collapse_' + card.dataset.collapse;
+
+    // відновити стан
+    const saved = localStorage.getItem(key);
+    if (saved === 'closed') {
+      body.style.display = 'none';
+      card.classList.remove('open');
+    }
+
+    toggle.addEventListener('click', () => {
+      const isOpen = body.style.display !== 'none';
+
+      if (isOpen) {
+        body.style.display = 'none';
+        card.classList.remove('open');
+        localStorage.setItem(key, 'closed');
+      } else {
+        body.style.display = '';
+        card.classList.add('open');
+        localStorage.setItem(key, 'open');
+      }
+    });
+  });
+
+});
 </script>
 
 </body>
