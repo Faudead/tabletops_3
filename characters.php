@@ -102,7 +102,7 @@ $shared = $stmt->fetchAll();
   <ul>
     <?php foreach ($rows as $c): ?>
       <li>
-        <a href="/character.php?id=<?= (int)$c['id'] ?>">
+        <a href="/character_v2.php?id=<?= (int)$c['id'] ?>">
           <?= htmlspecialchars((string)$c['name']) ?>
         </a>
         — lvl <?= (int)$c['level'] ?> <?= htmlspecialchars((string)$c['class_name']) ?>
@@ -115,7 +115,7 @@ $shared = $stmt->fetchAll();
   <ul>
     <?php foreach ($rows as $c): ?>
       <li>
-        <a href="/character.php?id=<?= (int)$c['id'] ?>">
+        <a href="/character_v2.php?id=<?= (int)$c['id'] ?>">
           <?= htmlspecialchars((string)$c['name']) ?>
         </a>
         — lvl <?= (int)$c['level'] ?> <?= htmlspecialchars((string)$c['class_name']) ?>
@@ -134,7 +134,7 @@ $shared = $stmt->fetchAll();
       <ul>
         <?php foreach ($shared as $c): ?>
           <li>
-            <a href="/character.php?id=<?= (int)$c['id'] ?>">
+            <a href="/character_v2.php?id=<?= (int)$c['id'] ?>">
               <?= htmlspecialchars((string)$c['name']) ?>
             </a>
 

@@ -1,5 +1,5 @@
 ROOT: "D:\Projects\games\site-fondry\tabletops_3"
-GENERATED: 2026-02-15 09:34:49
+GENERATED: 2026-02-15 10:11:23
 
 ====== CODE CONTENTS ======
 Included extensions: .bat .conf .css .env .htaccess .htm .html .ini .java .js .json .jsx .less .php .phtml .py .rb .sass .scss .sh .sql .ts .tsx .xml .yaml .yml
@@ -568,7 +568,7 @@ $schools = db()->query("SELECT DISTINCT school FROM spells WHERE school<>'' ORDE
 
 ======================================================================
 FILE: D:\Projects\games\site-fondry\tabletops_3\character.php
-MODIFIED: 2026-02-15 09:31:48 | SIZE: 49480 bytes
+MODIFIED: 2026-02-15 10:06:57 | SIZE: 47064 bytes
 ======================================================================
 
 <?php
@@ -589,6 +589,8 @@ $stmt = db()->prepare("SELECT * FROM characters WHERE id=?");
 $stmt->execute([$charId]);
 $ch = $stmt->fetch();
 if (!$ch) { http_response_code(404); echo "Not found"; exit; }
+$ch['avatar_url'] = $ch['avatar_url'] ?? null;
+$ch['avatar_data'] = $ch['avatar_data'] ?? null;
 
 // access: admin OR owner OR shared
 $canEdit = false;
@@ -853,93 +855,21 @@ if (!empty($ch['avatar_data'])) {
   <h2>Avatar</h2>
   <div class="avatarBox" style="margin-bottom:10px; display:flex; align-items:center;">
   <div style="margin-right:16px;">
-  <div id="avatarContainer" style="width:128px;height:128px;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid #ccc;cursor:pointer;">
+  <div id="avatarContainer" class="avatarContainer">
   <img
     id="avatarPreview"
     src="<?= $avatarSrc ? h($avatarSrc) : 'https://via.placeholder.com/128?text=No+avatar' ?>"
     alt="avatar"
-    style="max-width:100%;max-height:100%;width:auto;height:auto;display:block;"
+    style="display:block;max-width: 100%;"
     tabindex="0"
-      <?= $canEdit ? '' : 'aria-disabled="true"' ?>
-      title="<?= $canEdit ? 'Click or paste image to change avatar' : 'Editing disabled' ?>"
-    >
+    <?= $canEdit ? '' : 'aria-disabled="true"' ?>
+    title="<?= $canEdit ? 'Click or paste image to change avatar' : 'Editing disabled' ?>"
+  >
   </div>
-<script>
-const avatarImg = document.getElementById('avatarPreview');
-const avatarContainer = document.getElementById('avatarContainer');
+  <input type="file" id="avatarFile" accept="image/*" hidden <?= $canEdit ? '' : 'disabled' ?>>
+  <input type="hidden" id="avatarData" name="avatar_data" value="<?= h($ch['avatar_data'] ?? '') ?>">
 
-function adjustContainer() {
-  if (!avatarImg.naturalWidth || !avatarImg.naturalHeight) return;
-  if (avatarImg.naturalWidth === avatarImg.naturalHeight) {
-    avatarContainer.style.width = '128px';
-    avatarContainer.style.height = '128px';
-  } else if (avatarImg.naturalWidth > avatarImg.naturalHeight) {
-    avatarContainer.style.width = '128px';
-    avatarContainer.style.height = Math.round(128 * avatarImg.naturalHeight / avatarImg.naturalWidth) + 'px';
-  } else {
-    avatarContainer.style.height = '128px';
-    avatarContainer.style.width = Math.round(128 * avatarImg.naturalWidth / avatarImg.naturalHeight) + 'px';
-  }
-}
-avatarImg.addEventListener('load', adjustContainer);
-if (avatarImg.complete) adjustContainer();
-</script>
-    <input type="file" id="avatarFile" accept="image/*" style="display:none" <?= $canEdit ? '' : 'disabled' ?>>
-    <input type="hidden" name="avatar_data" id="avatarData" value="<?= h($ch['avatar_data']) ?>">
-  </div>
-  </div>
-</div>
-<script>
-const canEdit = <?= $canEdit ? 'true' : 'false' ?>;
-const avatarImg = document.getElementById('avatarPreview');
-const avatarInput = document.getElementById('avatarFile');
-const avatarData = document.getElementById('avatarData');
-const btnClear = document.getElementById('btnClearAvatar');
 
-// Клік по аватару відкриває вибір файлу
-if (canEdit) {
-  avatarImg.addEventListener('click', () => avatarInput.click());
-  avatarImg.addEventListener('keydown', e => {
-    if (e.key === 'Enter' || e.key === ' ') avatarInput.click();
-  });
-
-  // Оновлення прев’ю після вибору файлу
-  avatarInput.addEventListener('change', e => {
-    if (e.target.files && e.target.files[0]) {
-      const reader = new FileReader();
-      reader.onload = ev => {
-        avatarImg.src = ev.target.result;
-        avatarData.value = ev.target.result;
-      };
-      reader.readAsDataURL(e.target.files[0]);
-    }
-  });
-
-  // Вставка зображення з буфера обміну
-  avatarImg.addEventListener('paste', e => {
-    const items = (e.clipboardData || window.clipboardData).items;
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].type.indexOf('image') !== -1) {
-        const file = items[i].getAsFile();
-        const reader = new FileReader();
-        reader.onload = ev => {
-          avatarImg.src = ev.target.result;
-          avatarData.value = ev.target.result;
-        };
-        reader.readAsDataURL(file);
-      }
-    }
-  });
-
-  // Очищення аватара
-  btnClear.addEventListener('click', () => {
-    avatarImg.src = 'https://via.placeholder.com/128?text=No+avatar';
-    avatarData.value = '';
-    document.getElementById('avatarUrl').value = '';
-    avatarInput.value = '';
-  });
-}
-</script>
 </section>
 
       <section class="card" style="margin-top: 12px;">
@@ -1044,7 +974,7 @@ if (canEdit) {
               </div>
 
             </section>
-            <section class="card" data-collapse="skills">
+            <section class="card collapsible open" data-collapse="skills">
                 <div class="collapseToggle">
                 <h2 style="margin:0;">Skills</h2>
                 <span class="muted">toggle</span>
@@ -1055,15 +985,7 @@ if (canEdit) {
                 </div>
             </section>
           </div>
-
-          
-
-
 </section>
-
-                
-
-
 
 <!-- TAB: WEAPONS -->
         <section data-panel="weapons" hidden>
@@ -1344,48 +1266,75 @@ if (canEdit) {
     t.addEventListener('click', () => card.classList.toggle('open'));
   });
 
-  // Avatar file -> base64
-  const avatarFile = document.getElementById('avatarFile');
-  const avatarData = document.getElementById('avatarData');
-  const avatarUrl  = document.getElementById('avatarUrl');
-  const preview    = document.getElementById('avatarPreview');
-  const btnClear   = document.getElementById('btnClearAvatar');
+// ========================
+// AVATAR SYSTEM
+// ========================
 
-  const setPreview = (src) => {
-    preview.innerHTML = src ? `<img src="${src}" alt="avatar">` : `<span class="muted">No avatar</span>`;
+const avatarContainer = document.getElementById('avatarContainer');
+const avatarImg = document.getElementById('avatarPreview');
+const avatarFile = document.getElementById('avatarFile');
+const avatarData = document.getElementById('avatarData');
+
+if (canEdit && avatarContainer && avatarFile && avatarImg) {
+
+  // --- helper: convert file to base64
+  const fileToBase64 = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.readAsDataURL(file);
+    });
   };
 
-  if (avatarFile && canEdit) {
-    avatarFile.addEventListener('change', async (e) => {
-      const f = e.target.files && e.target.files[0];
-      if (!f) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        const src = String(reader.result || '');
-        avatarData.value = src;
-        if (avatarUrl) avatarUrl.value = '';
-        setPreview(src);
-      };
-      reader.readAsDataURL(f);
-    });
-  }
 
-  if (avatarUrl && canEdit) {
-    avatarUrl.addEventListener('input', () => {
-      const v = avatarUrl.value.trim();
-      if (v) avatarData.value = '';
-      setPreview(v || avatarData.value);
-    });
-  }
 
-  if (btnClear && canEdit) {
-    btnClear.addEventListener('click', () => {
-      if (avatarFile) avatarFile.value = '';
-      if (avatarUrl) avatarUrl.value = '';
-      if (avatarData) avatarData.value = '';
-      setPreview('');
-    });
-  }
+
+  avatarImg.addEventListener('load', adjustContainer);
+  if (avatarImg.complete) adjustContainer();
+
+  // --- click → open file dialog
+  avatarContainer.addEventListener('click', () => {
+    avatarFile.click();
+  });
+
+  // --- file selected
+  avatarFile.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast('Only images allowed');
+      return;
+    }
+
+    const base64 = await fileToBase64(file);
+    avatarData.value = base64;
+    avatarImg.src = base64;
+  });
+
+  // --- paste from clipboard
+  document.addEventListener('paste', async (e) => {
+    if (!document.activeElement || !avatarContainer.contains(document.activeElement)) return;
+
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (!file) continue;
+
+        const base64 = await fileToBase64(file);
+        avatarData.value = base64;
+        avatarImg.src = base64;
+        toast('Image pasted');
+        break;
+      }
+    }
+  });
+
+}
+
 
   // Dynamic lists helpers
   const q = (sel) => document.querySelector(sel);
@@ -1707,7 +1656,7 @@ if (canEdit) {
     fd.append('skills_json', JSON.stringify(state.skills || {}));
     fd.append('profs_json', JSON.stringify(state.profs || {}));
 
-    const res = await fetch('/api/character_extras_save.php', { method:'POST', body: fd });
+    const res = await fetch('/api/character_save.php', { method:'POST', body: fd });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.ok === false) throw new Error(data.error || 'Extras save failed');
   };
@@ -3073,7 +3022,7 @@ function logout_user(): void {
 
 ======================================================================
 FILE: D:\Projects\games\site-fondry\tabletops_3\inc\char.css
-MODIFIED: 2026-02-14 23:14:49 | SIZE: 8891 bytes
+MODIFIED: 2026-02-15 10:05:12 | SIZE: 9380 bytes
 ======================================================================
 
 /* ================================
@@ -3553,6 +3502,32 @@ MODIFIED: 2026-02-14 23:14:49 | SIZE: 8891 bytes
 
 .collapsible.open .collapseToggle::after{
   transform:rotate(-180deg);
+}
+.collapsible .cardBody {
+  display: none;
+}
+
+.collapsible.open .cardBody {
+  display: block;
+}
+
+.collapseToggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+.avatarContainer {
+  width: 100%;
+  max-width: 280px;      /* обмеження по ширині */
+  border: 1px solid #ccc;
+  cursor: pointer;
+}
+
+.avatarContainer img {
+  width: 100%;
+  height: auto;          /* ключове */
+  display: block;
 }
 
 

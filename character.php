@@ -285,9 +285,12 @@ if (!empty($ch['avatar_data'])) {
   <div id="avatarContainer" class="avatarContainer">
   <img
     id="avatarPreview"
-    src="..."
+    src="<?= $avatarSrc ? h($avatarSrc) : 'https://via.placeholder.com/128?text=No+avatar' ?>"
     alt="avatar"
-    style="display:block;"
+    style="display:block;max-width: 100%;"
+    tabindex="0"
+    <?= $canEdit ? '' : 'aria-disabled="true"' ?>
+    title="<?= $canEdit ? 'Click or paste image to change avatar' : 'Editing disabled' ?>"
   >
   </div>
   <input type="file" id="avatarFile" accept="image/*" hidden <?= $canEdit ? '' : 'disabled' ?>>

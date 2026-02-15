@@ -1,5 +1,5 @@
 ROOT: "D:\Projects\games\site-fondry\tabletops_3"
-GENERATED: 2026-02-15 09:34:49
+GENERATED: 2026-02-15 10:11:23
 
 ====== DIRECTORY STRUCTURE ======
 
